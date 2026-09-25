@@ -1,0 +1,12 @@
+{
+  "_comment": "Deliberately messy output (fenced JSON, trailing comma, invalid and past dates, duplicate task) to exercise the repair + validation path - e.g. what a small local model can return.",
+  "type": "message",
+  "model": "local-model",
+  "stop_reason": "end_turn",
+  "content": [
+    {
+      "type": "text",
+      "text": "Here are the notes:\n```json\n{\"title\": \"Budget check-in\", \"summary\": \"Groceries are over budget; subscriptions will be reviewed.\", \"keyPoints\": [\"Groceries about 120 over\",], \"decisions\": [], \"actionItems\": [{\"task\": \"List all streaming subscriptions\", \"owner\": \"jordan\", \"dueDate\": \"2026-02-30\", \"priority\": \"urgent\", \"sourceQuote\": \"I'll list them all by Saturday.\"}, {\"task\": \"list all streaming subscriptions\", \"owner\": \"Jordan\", \"dueDate\": null, \"priority\": \"normal\", \"sourceQuote\": \"\"}, {\"task\": \"Review grocery receipts\", \"owner\": \"\", \"dueDate\": \"2025-01-01\", \"priority\": \"low\", \"sourceQuote\": \"\"}], \"openQuestions\": []}\n```\nLet me know if you need anything else."
+    }
+  ]
+}

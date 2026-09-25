@@ -1,0 +1,865 @@
+{
+  "id": "HmPrivateDocQa01",
+  "name": "Private document Q&A (local Ollama + Qdrant)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Private document Q&A - 100% local (demo)\nDocuments, embeddings, the vector database and the language model all run on the home server: **Ollama** (nomic-embed-text + llama3.1:8b) and **Qdrant**. No node in this workflow calls a cloud API - `npm run validate` enforces that.\n\n**Ingest** (manual or nightly): read /data/docs -> chunk -> embed -> replace that file's chunks in Qdrant.\n**Ask**: POST {\"question\": \"...\"} to the webhook -> answer with numbered citations to file + section.",
+        "height": 200,
+        "width": 1000,
+        "color": 4
+      },
+      "id": "66d3c0c1-c92f-429a-855b-468382453992",
+      "name": "Note: Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -60,
+        0
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "afdbbe2f-1c05-4f9a-a9c8-ba4ac948484e",
+      "name": "Manual: Re-index Documents",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 2 * * *"
+            }
+          ]
+        }
+      },
+      "id": "9bfe28a2-b379-4caa-84e4-0fb4823936d5",
+      "name": "Nightly Re-index 02:30",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        700
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "doc-qa",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "d3fb1fc1-ddb2-4733-b0b3-a30b00150b23",
+      "name": "Question Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        280
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Webhook shared secret (doc Q&A)"
+        }
+      },
+      "webhookId": "9f31c69b-ad34-4ca5-bfe8-c3152f087b0c"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "{\n  \"ollamaBaseUrl\": \"http://ollama:11434\",\n  \"qdrantUrl\": \"http://qdrant:6333\",\n  \"collection\": \"household_docs\",\n  \"embedModel\": \"nomic-embed-text\",\n  \"embedDims\": 768,\n  \"chatModel\": \"llama3.1:8b\",\n  \"topK\": 6,\n  \"minScore\": 0.35,\n  \"docsRoot\": \"/data/docs\",\n  \"docsGlob\": \"/data/docs/**/*.{md,txt}\",\n  \"chunkChars\": 1200,\n  \"chunkOverlap\": 200\n}",
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "9500089a-bf1a-45ca-86c2-c531f08c6c17",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "5da563f4-c481-478e-934c-39117feb6cd1",
+              "leftValue": "={{ !!$json.body }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "40eb667f-4282-43ee-94bf-dcb18f529aab",
+      "name": "Question or Re-index?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        460,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.qdrantUrl }}/collections/{{ $('Config').first().json.collection }}/exists",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "cc9aa0e7-077e-4da4-bfa2-c3ee60bc2662",
+      "name": "Qdrant: Collection Exists?",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        700,
+        660
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ad8f7382-21cb-4993-af59-6e9e86a09bb2",
+              "leftValue": "={{ !$json.result.exists }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "249cfd48-9f2c-4ce1-b9be-62b0982b3221",
+      "name": "Needs Collection?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        920,
+        660
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ $('Config').first().json.qdrantUrl }}/collections/{{ $('Config').first().json.collection }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ vectors: { size: $('Config').first().json.embedDims, distance: 'Cosine' } }) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "696d606d-07c7-48bf-9cf3-92b42dc5fd0c",
+      "name": "Qdrant: Create Collection",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1140,
+        580
+      ]
+    },
+    {
+      "parameters": {
+        "fileSelector": "={{ $('Config').first().json.docsGlob }}",
+        "options": {}
+      },
+      "id": "feda8dad-710a-4ba2-a4b6-8fa37f6edc7f",
+      "name": "Read Documents",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        1360,
+        680
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "options": {}
+      },
+      "id": "432214ce-148d-4ba3-92bd-f6e6a5eafb6c",
+      "name": "Extract Text",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        1580,
+        680
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---------------------------------------------------------------------------\n// GENERATED by scripts/build-workflows.mjs from: src/shared/text.js, src/docqa/chunk.js\n// Edit the files in src/ (unit-tested) and run `npm run build` - not this box.\n// ---------------------------------------------------------------------------\n\n// ---- src/shared/text.js\n// Small, dependency-free helpers shared by several Code nodes.\n// Everything in src/ is plain JavaScript that runs both under Node (tests)\n// and inside an n8n Code node (after scripts/build-workflows.mjs inlines it).\n\n/** Collapse runs of whitespace and trim. Non-strings become ''. */\nfunction cleanText(value) {\n  if (value === null || value === undefined) return '';\n  return String(value).replace(/\\s+/g, ' ').trim();\n}\n\n/** Escape text for Telegram's HTML parse mode. */\nfunction escapeHtml(value) {\n  return String(value ?? '')\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;');\n}\n\n/**\n * Cut text to `max` characters on a word boundary and say so, instead of\n * cutting silently. Used only for display surfaces with hard limits\n * (Notion text blocks, Telegram messages) - never for LLM input.\n */\nfunction clip(value, max, notice = ' [...truncated]') {\n  const text = String(value ?? '');\n  if (text.length <= max) return text;\n  const room = Math.max(0, max - notice.length);\n  const cut = text.slice(0, room);\n  const lastSpace = cut.lastIndexOf(' ');\n  return (lastSpace > room * 0.6 ? cut.slice(0, lastSpace) : cut) + notice;\n}\n\n/** 32-bit FNV-1a hash as 8 hex chars. Deterministic, no crypto module needed. */\nfunction fnv1a(input, seed = 0x811c9dc5) {\n  let hash = seed >>> 0;\n  const str = String(input);\n  for (let i = 0; i < str.length; i++) {\n    hash ^= str.charCodeAt(i);\n    hash = Math.imul(hash, 0x01000193) >>> 0;\n  }\n  return hash.toString(16).padStart(8, '0');\n}\n\n/**\n * Deterministic UUID-shaped id (Qdrant accepts UUID strings as point ids).\n * Not RFC-4122 random - it is a stable fingerprint so re-ingesting the same\n * chunk overwrites the same point instead of duplicating it.\n */\nfunction stableUuid(input) {\n  const h = [0x811c9dc5, 0x01000193, 0x9e3779b9, 0x85ebca6b].map((seed) => fnv1a(input, seed)).join('');\n  return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20, 32)}`;\n}\n\n/** YYYY-MM-DD for a Date in the given IANA timezone. */\nfunction isoDateInZone(date, timeZone) {\n  return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);\n}\n\n/** True for a real calendar date in YYYY-MM-DD form (rejects 2026-02-30). */\nfunction isValidIsoDate(value) {\n  if (typeof value !== 'string' || !/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return false;\n  const [y, m, d] = value.split('-').map(Number);\n  const dt = new Date(Date.UTC(y, m - 1, d));\n  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;\n}\n\n// ---- src/docqa/chunk.js\n// Split household documents into overlapping chunks for embedding.\n// Paragraph-aware: we pack whole paragraphs until the size limit, carry a\n// short overlap into the next chunk, and remember the nearest Markdown\n// heading so citations can say \"boiler.md > Annual service\".\n\nfunction chunkDocument({ path, text }, { maxChars = 1200, overlapChars = 200 } = {}) {\n  const clean = String(text ?? '').replace(/\\r\\n/g, '\\n').trim();\n  if (!clean) return [];\n  const paragraphs = clean.split(/\\n{2,}/).map((p) => p.trim()).filter(Boolean);\n\n  const chunks = [];\n  let heading = null;\n  let current = ''; // text of the chunk being built (may start with overlap)\n  let hasNew = false; // true once `current` holds text not already in a previous chunk\n  let currentHeading = null;\n\n  const flush = () => {\n    if (!hasNew) return;\n    const index = chunks.length;\n    chunks.push({\n      id: stableUuid(`${path}#${index}#${current}`),\n      path,\n      chunkIndex: index,\n      heading: currentHeading,\n      text: current.trim(),\n    });\n    const tail = current.slice(-overlapChars);\n    const cut = tail.indexOf(' ');\n    current = cut > 0 ? tail.slice(cut + 1) : '';\n    hasNew = false;\n  };\n\n  for (const para of paragraphs) {\n    if (/^#{1,6}\\s+/.test(para)) heading = para.split('\\n')[0].replace(/^#{1,6}\\s+/, '').trim();\n    // Very long paragraphs (tables, pasted logs) are split on whitespace.\n    const pieces = para.length > maxChars ? para.match(new RegExp(`[\\\\s\\\\S]{1,${maxChars - overlapChars}}(?=\\\\s|$)`, 'g')) || [para] : [para];\n    for (const piece of pieces) {\n      if (hasNew && current.length + piece.length + 2 > maxChars) flush();\n      if (!hasNew) currentHeading = heading;\n      current = current ? `${current}\\n\\n${piece}` : piece;\n      hasNew = true;\n    }\n  }\n  flush();\n  return chunks;\n}\n\n/** Qdrant points + the list of files touched (to delete stale chunks first). */\nfunction buildQdrantPoints(chunks, embeddings, { batchSize = 64 } = {}) {\n  if (chunks.length !== embeddings.length) {\n    throw new Error(`Got ${embeddings.length} embeddings for ${chunks.length} chunks`);\n  }\n  const points = chunks.map((c, i) => {\n    const vector = embeddings[i];\n    if (!Array.isArray(vector) || vector.length === 0) throw new Error(`Chunk ${c.path}#${c.chunkIndex} has no embedding`);\n    return {\n      id: c.id,\n      vector,\n      payload: { path: c.path, chunkIndex: c.chunkIndex, heading: c.heading, text: c.text },\n    };\n  });\n  const batches = [];\n  for (let i = 0; i < points.length; i += batchSize) batches.push({ points: points.slice(i, i + batchSize) });\n  const paths = [...new Set(chunks.map((c) => c.path))];\n  return {\n    paths,\n    pointCount: points.length,\n    deleteRequest: { filter: { must: [{ key: 'path', match: { any: paths } }] } },\n    batches,\n  };\n}\n\n// ---- n8n entry point\n\nconst config = $('Config').first().json;\nconst root = String(config.docsRoot || '').replace(/\\/$/, '');\nconst files = $('Read Documents').all();\nconst out = [];\n$input.all().forEach((item, idx) => {\n  const paired = Array.isArray(item.pairedItem) ? item.pairedItem[0] : item.pairedItem;\n  const meta = files[paired?.item ?? idx]?.binary?.data || {};\n  let path = meta.directory && meta.fileName ? `${meta.directory}/${meta.fileName}` : meta.fileName || `document-${idx}`;\n  if (root && path.startsWith(root + '/')) path = path.slice(root.length + 1);\n  const chunks = chunkDocument({ path, text: item.json.data }, {\n    maxChars: Number(config.chunkChars) || 1200,\n    overlapChars: Number(config.chunkOverlap) || 200,\n  });\n  for (const chunk of chunks) out.push({ json: chunk, pairedItem: { item: idx } });\n});\nreturn out;\n"
+      },
+      "id": "291978ab-76c1-46c4-b773-1dbff2719620",
+      "name": "Chunk Documents",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1800,
+        680
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.ollamaBaseUrl }}/api/embed",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: $('Config').first().json.embedModel, input: $json.text }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "9f0b9a93-7d4f-4625-9e26-d0aae872bec6",
+      "name": "Ollama: Embed Chunks",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2020,
+        680
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---------------------------------------------------------------------------\n// GENERATED by scripts/build-workflows.mjs from: src/shared/text.js, src/docqa/chunk.js\n// Edit the files in src/ (unit-tested) and run `npm run build` - not this box.\n// ---------------------------------------------------------------------------\n\n// ---- src/shared/text.js\n// Small, dependency-free helpers shared by several Code nodes.\n// Everything in src/ is plain JavaScript that runs both under Node (tests)\n// and inside an n8n Code node (after scripts/build-workflows.mjs inlines it).\n\n/** Collapse runs of whitespace and trim. Non-strings become ''. */\nfunction cleanText(value) {\n  if (value === null || value === undefined) return '';\n  return String(value).replace(/\\s+/g, ' ').trim();\n}\n\n/** Escape text for Telegram's HTML parse mode. */\nfunction escapeHtml(value) {\n  return String(value ?? '')\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;');\n}\n\n/**\n * Cut text to `max` characters on a word boundary and say so, instead of\n * cutting silently. Used only for display surfaces with hard limits\n * (Notion text blocks, Telegram messages) - never for LLM input.\n */\nfunction clip(value, max, notice = ' [...truncated]') {\n  const text = String(value ?? '');\n  if (text.length <= max) return text;\n  const room = Math.max(0, max - notice.length);\n  const cut = text.slice(0, room);\n  const lastSpace = cut.lastIndexOf(' ');\n  return (lastSpace > room * 0.6 ? cut.slice(0, lastSpace) : cut) + notice;\n}\n\n/** 32-bit FNV-1a hash as 8 hex chars. Deterministic, no crypto module needed. */\nfunction fnv1a(input, seed = 0x811c9dc5) {\n  let hash = seed >>> 0;\n  const str = String(input);\n  for (let i = 0; i < str.length; i++) {\n    hash ^= str.charCodeAt(i);\n    hash = Math.imul(hash, 0x01000193) >>> 0;\n  }\n  return hash.toString(16).padStart(8, '0');\n}\n\n/**\n * Deterministic UUID-shaped id (Qdrant accepts UUID strings as point ids).\n * Not RFC-4122 random - it is a stable fingerprint so re-ingesting the same\n * chunk overwrites the same point instead of duplicating it.\n */\nfunction stableUuid(input) {\n  const h = [0x811c9dc5, 0x01000193, 0x9e3779b9, 0x85ebca6b].map((seed) => fnv1a(input, seed)).join('');\n  return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20, 32)}`;\n}\n\n/** YYYY-MM-DD for a Date in the given IANA timezone. */\nfunction isoDateInZone(date, timeZone) {\n  return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);\n}\n\n/** True for a real calendar date in YYYY-MM-DD form (rejects 2026-02-30). */\nfunction isValidIsoDate(value) {\n  if (typeof value !== 'string' || !/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return false;\n  const [y, m, d] = value.split('-').map(Number);\n  const dt = new Date(Date.UTC(y, m - 1, d));\n  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;\n}\n\n// ---- src/docqa/chunk.js\n// Split household documents into overlapping chunks for embedding.\n// Paragraph-aware: we pack whole paragraphs until the size limit, carry a\n// short overlap into the next chunk, and remember the nearest Markdown\n// heading so citations can say \"boiler.md > Annual service\".\n\nfunction chunkDocument({ path, text }, { maxChars = 1200, overlapChars = 200 } = {}) {\n  const clean = String(text ?? '').replace(/\\r\\n/g, '\\n').trim();\n  if (!clean) return [];\n  const paragraphs = clean.split(/\\n{2,}/).map((p) => p.trim()).filter(Boolean);\n\n  const chunks = [];\n  let heading = null;\n  let current = ''; // text of the chunk being built (may start with overlap)\n  let hasNew = false; // true once `current` holds text not already in a previous chunk\n  let currentHeading = null;\n\n  const flush = () => {\n    if (!hasNew) return;\n    const index = chunks.length;\n    chunks.push({\n      id: stableUuid(`${path}#${index}#${current}`),\n      path,\n      chunkIndex: index,\n      heading: currentHeading,\n      text: current.trim(),\n    });\n    const tail = current.slice(-overlapChars);\n    const cut = tail.indexOf(' ');\n    current = cut > 0 ? tail.slice(cut + 1) : '';\n    hasNew = false;\n  };\n\n  for (const para of paragraphs) {\n    if (/^#{1,6}\\s+/.test(para)) heading = para.split('\\n')[0].replace(/^#{1,6}\\s+/, '').trim();\n    // Very long paragraphs (tables, pasted logs) are split on whitespace.\n    const pieces = para.length > maxChars ? para.match(new RegExp(`[\\\\s\\\\S]{1,${maxChars - overlapChars}}(?=\\\\s|$)`, 'g')) || [para] : [para];\n    for (const piece of pieces) {\n      if (hasNew && current.length + piece.length + 2 > maxChars) flush();\n      if (!hasNew) currentHeading = heading;\n      current = current ? `${current}\\n\\n${piece}` : piece;\n      hasNew = true;\n    }\n  }\n  flush();\n  return chunks;\n}\n\n/** Qdrant points + the list of files touched (to delete stale chunks first). */\nfunction buildQdrantPoints(chunks, embeddings, { batchSize = 64 } = {}) {\n  if (chunks.length !== embeddings.length) {\n    throw new Error(`Got ${embeddings.length} embeddings for ${chunks.length} chunks`);\n  }\n  const points = chunks.map((c, i) => {\n    const vector = embeddings[i];\n    if (!Array.isArray(vector) || vector.length === 0) throw new Error(`Chunk ${c.path}#${c.chunkIndex} has no embedding`);\n    return {\n      id: c.id,\n      vector,\n      payload: { path: c.path, chunkIndex: c.chunkIndex, heading: c.heading, text: c.text },\n    };\n  });\n  const batches = [];\n  for (let i = 0; i < points.length; i += batchSize) batches.push({ points: points.slice(i, i + batchSize) });\n  const paths = [...new Set(chunks.map((c) => c.path))];\n  return {\n    paths,\n    pointCount: points.length,\n    deleteRequest: { filter: { must: [{ key: 'path', match: { any: paths } }] } },\n    batches,\n  };\n}\n\n// ---- n8n entry point\n\nconst chunks = $('Chunk Documents').all().map((i) => i.json);\nconst embeddings = $input.all().map((i) => i.json.embeddings?.[0]);\nreturn [{ json: buildQdrantPoints(chunks, embeddings) }];\n"
+      },
+      "id": "5d7f1836-adcb-4d74-9e00-555c024d6f62",
+      "name": "Build Qdrant Points",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2240,
+        680
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.qdrantUrl }}/collections/{{ $('Config').first().json.collection }}/points/delete?wait=true",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.deleteRequest) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "82a1968d-a95d-4db8-83d3-534122429309",
+      "name": "Qdrant: Delete Old Chunks",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2460,
+        680
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---------------------------------------------------------------------------\n// GENERATED by scripts/build-workflows.mjs from: (entry only)\n// Edit the files in src/ (unit-tested) and run `npm run build` - not this box.\n// ---------------------------------------------------------------------------\n\n// ---- n8n entry point\n\nreturn $('Build Qdrant Points').first().json.batches.map((batch) => ({ json: batch }));\n"
+      },
+      "id": "8d987a23-d1b7-46c0-8fb6-7029fd24550d",
+      "name": "Split Upsert Batches",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2680,
+        680
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ $('Config').first().json.qdrantUrl }}/collections/{{ $('Config').first().json.collection }}/points?wait=true",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ points: $json.points }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "e8ff0eb4-4be9-4c90-b726-b0721cdc3285",
+      "name": "Qdrant: Upsert Points",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2900,
+        680
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---------------------------------------------------------------------------\n// GENERATED by scripts/build-workflows.mjs from: src/shared/text.js, src/shared/llm-response.js, src/docqa/rag.js\n// Edit the files in src/ (unit-tested) and run `npm run build` - not this box.\n// ---------------------------------------------------------------------------\n\n// ---- src/shared/text.js\n// Small, dependency-free helpers shared by several Code nodes.\n// Everything in src/ is plain JavaScript that runs both under Node (tests)\n// and inside an n8n Code node (after scripts/build-workflows.mjs inlines it).\n\n/** Collapse runs of whitespace and trim. Non-strings become ''. */\nfunction cleanText(value) {\n  if (value === null || value === undefined) return '';\n  return String(value).replace(/\\s+/g, ' ').trim();\n}\n\n/** Escape text for Telegram's HTML parse mode. */\nfunction escapeHtml(value) {\n  return String(value ?? '')\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;');\n}\n\n/**\n * Cut text to `max` characters on a word boundary and say so, instead of\n * cutting silently. Used only for display surfaces with hard limits\n * (Notion text blocks, Telegram messages) - never for LLM input.\n */\nfunction clip(value, max, notice = ' [...truncated]') {\n  const text = String(value ?? '');\n  if (text.length <= max) return text;\n  const room = Math.max(0, max - notice.length);\n  const cut = text.slice(0, room);\n  const lastSpace = cut.lastIndexOf(' ');\n  return (lastSpace > room * 0.6 ? cut.slice(0, lastSpace) : cut) + notice;\n}\n\n/** 32-bit FNV-1a hash as 8 hex chars. Deterministic, no crypto module needed. */\nfunction fnv1a(input, seed = 0x811c9dc5) {\n  let hash = seed >>> 0;\n  const str = String(input);\n  for (let i = 0; i < str.length; i++) {\n    hash ^= str.charCodeAt(i);\n    hash = Math.imul(hash, 0x01000193) >>> 0;\n  }\n  return hash.toString(16).padStart(8, '0');\n}\n\n/**\n * Deterministic UUID-shaped id (Qdrant accepts UUID strings as point ids).\n * Not RFC-4122 random - it is a stable fingerprint so re-ingesting the same\n * chunk overwrites the same point instead of duplicating it.\n */\nfunction stableUuid(input) {\n  const h = [0x811c9dc5, 0x01000193, 0x9e3779b9, 0x85ebca6b].map((seed) => fnv1a(input, seed)).join('');\n  return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20, 32)}`;\n}\n\n/** YYYY-MM-DD for a Date in the given IANA timezone. */\nfunction isoDateInZone(date, timeZone) {\n  return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);\n}\n\n/** True for a real calendar date in YYYY-MM-DD form (rejects 2026-02-30). */\nfunction isValidIsoDate(value) {\n  if (typeof value !== 'string' || !/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return false;\n  const [y, m, d] = value.split('-').map(Number);\n  const dt = new Date(Date.UTC(y, m - 1, d));\n  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;\n}\n\n// ---- src/shared/llm-response.js\n// Read the text out of an LLM HTTP response, for either provider.\n//\n// Anthropic Messages API: content is an array of blocks. With adaptive\n// thinking on, `thinking` blocks can come before the `text` block, and with\n// server-side fallbacks a `fallback` block marks a model switch - so we never\n// assume content[0] is the answer. stop_reason must be checked before the\n// content is trusted.\n//\n// Ollama /api/chat (stream: false): { message: { content }, done_reason }.\n\n/**\n * @returns {{ ok: true, text: string, provider: string, model: string|null, fellBack: boolean }\n *         | { ok: false, error: string, provider: string, retryable: boolean }}\n */\nfunction readLlmText(response) {\n  if (!response || typeof response !== 'object') {\n    return { ok: false, provider: 'unknown', error: 'Empty response from LLM', retryable: true };\n  }\n  // n8n HTTP node with \"continue\" error handling puts failures under `error`.\n  if (response.error && !response.content && !response.message) {\n    const msg = typeof response.error === 'string' ? response.error : response.error.message || JSON.stringify(response.error);\n    return { ok: false, provider: 'unknown', error: `LLM request failed: ${msg}`, retryable: true };\n  }\n\n  if (Array.isArray(response.content)) {\n    const provider = 'anthropic';\n    if (response.type === 'error') {\n      return { ok: false, provider, error: `Anthropic error: ${response.error?.message || 'unknown'}`, retryable: false };\n    }\n    if (response.stop_reason === 'refusal') {\n      const category = response.stop_details?.category || 'unspecified';\n      return { ok: false, provider, error: `Claude declined the request (category: ${category})`, retryable: false };\n    }\n    if (response.stop_reason === 'max_tokens') {\n      return { ok: false, provider, error: 'Claude hit max_tokens - output is incomplete. Raise maxOutputTokens in the Config node.', retryable: false };\n    }\n    const text = response.content\n      .filter((b) => b && b.type === 'text' && typeof b.text === 'string')\n      .map((b) => b.text)\n      .join('');\n    if (!text.trim()) {\n      return { ok: false, provider, error: 'Claude returned no text block', retryable: true };\n    }\n    const fellBack = response.content.some((b) => b && b.type === 'fallback');\n    return { ok: true, provider, text, model: response.model || null, fellBack };\n  }\n\n  if (response.message && typeof response.message.content === 'string') {\n    const provider = 'ollama';\n    if (response.done_reason === 'length') {\n      return { ok: false, provider, error: 'Ollama stopped at num_predict - output is incomplete', retryable: false };\n    }\n    const text = response.message.content;\n    if (!text.trim()) return { ok: false, provider, error: 'Ollama returned an empty message', retryable: true };\n    return { ok: true, provider, text, model: response.model || null, fellBack: false };\n  }\n\n  return { ok: false, provider: 'unknown', error: 'Unrecognised LLM response shape', retryable: false };\n}\n\n// ---- src/docqa/rag.js\n// Retrieval-augmented answers with citations, entirely on the local network:\n// question -> Ollama embedding -> Qdrant search -> Ollama chat -> citations.\n\nfunction normalizeQuestion(input) {\n  const body = input?.body ?? input ?? {};\n  const question = cleanText(body.question ?? body.q ?? body.Question);\n  if (!question) return { ok: false, status: 400, error: 'Send JSON like {\"question\": \"When is the boiler service due?\"}' };\n  if (question.length > 1000) return { ok: false, status: 400, error: 'Question is too long (max 1000 characters)' };\n  const topK = Math.min(Math.max(Number(body.topK) || 0, 0), 12) || null;\n  return { ok: true, question, topK };\n}\n\n/**\n * @param {string} question\n * @param {object[]} hits  Qdrant search results: { id, score, payload: { path, heading, text } }\n * @param {object} config\n */\nfunction buildRagRequest(question, hits, config = {}) {\n  const minScore = Number(config.minScore ?? 0.35);\n  const sources = (Array.isArray(hits) ? hits : [])\n    .filter((h) => h && h.payload && typeof h.score === 'number' && h.score >= minScore)\n    .map((h, i) => ({\n      n: i + 1,\n      path: h.payload.path,\n      heading: h.payload.heading || null,\n      chunkIndex: h.payload.chunkIndex,\n      score: Math.round(h.score * 1000) / 1000,\n      text: h.payload.text,\n    }));\n\n  if (sources.length === 0) return { hasSources: false, sources: [] };\n\n  const context = sources\n    .map((s) => `[${s.n}] ${s.path}${s.heading ? ` > ${s.heading}` : ''}\\n${s.text}`)\n    .join('\\n\\n---\\n\\n');\n\n  const system = `You answer questions about a household's private documents.\nAnswer only from the numbered sources. After every sentence that uses a source, cite it like [1] or [2][3].\nIf the sources do not contain the answer, reply exactly: \"I couldn't find that in the documents.\"\nBe brief: at most 5 sentences. Never guess dates, amounts, policy numbers or phone numbers.`;\n\n  return {\n    hasSources: true,\n    sources,\n    request: {\n      model: config.chatModel || 'llama3.1:8b',\n      stream: false,\n      options: { temperature: 0.1, num_ctx: 8192 },\n      messages: [\n        { role: 'system', content: system },\n        { role: 'user', content: `Sources:\\n\\n${context}\\n\\nQuestion: ${question}` },\n      ],\n    },\n  };\n}\n\n/**\n * Map [n] markers in the answer to sources. Citations to sources that do not\n * exist are removed (small local models sometimes invent \"[7]\").\n */\nfunction formatAnswer(llmResponse, sources, question) {\n  const read = readLlmText(llmResponse);\n  if (!read.ok) return { ok: false, question, error: read.error, answer: null, citations: [] };\n\n  const valid = new Set(sources.map((s) => s.n));\n  const invalid = new Set();\n  const used = new Set();\n  const answer = read.text\n    .replace(/\\[(\\d+)\\]/g, (m, d) => {\n      const n = Number(d);\n      if (valid.has(n)) {\n        used.add(n);\n        return m;\n      }\n      invalid.add(n);\n      return '';\n    })\n    .replace(/[ \\t]+([.,;:])/g, '$1')\n    .trim();\n\n  const notFound = /couldn't find that in the documents/i.test(answer);\n  const citations = sources\n    .filter((s) => used.has(s.n))\n    .map((s) => ({ n: s.n, path: s.path, heading: s.heading, score: s.score, excerpt: clip(s.text, 240) }));\n\n  return {\n    ok: true,\n    question,\n    answer,\n    grounded: !notFound && citations.length > 0,\n    citations,\n    warnings: [\n      ...(invalid.size ? [`Removed citations to non-existent sources: ${[...invalid].join(', ')}`] : []),\n      ...(!notFound && citations.length === 0 ? ['Answer has no citations - treat it with caution'] : []),\n    ],\n    model: read.model,\n  };\n}\n\n// ---- n8n entry point\n\nreturn $input.all().map((item) => ({ json: normalizeQuestion(item.json) }));\n"
+      },
+      "id": "25fd66cd-cc20-473c-b8bd-f82555e4a70c",
+      "name": "Validate Question",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "9a3c7af0-7843-4df1-9ccf-5dc7f640d553",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "9e4a250e-0396-4b74-8033-38ac00356378",
+      "name": "Question OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        920,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ error: $json.error }) }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "6d238011-2950-466f-90a5-f523bce4bee1",
+      "name": "Respond: Bad Request",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1140,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.ollamaBaseUrl }}/api/embed",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: $('Config').first().json.embedModel, input: $json.question }) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "f552b0b9-e227-4059-89ee-47e8732ea037",
+      "name": "Ollama: Embed Question",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1140,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.qdrantUrl }}/collections/{{ $('Config').first().json.collection }}/points/search",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ vector: $json.embeddings[0], limit: $('Validate Question').first().json.topK || $('Config').first().json.topK, with_payload: true }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "b7703ab2-92bd-49dd-a8da-c0693f913fcb",
+      "name": "Qdrant: Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1360,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---------------------------------------------------------------------------\n// GENERATED by scripts/build-workflows.mjs from: src/shared/text.js, src/shared/llm-response.js, src/docqa/rag.js\n// Edit the files in src/ (unit-tested) and run `npm run build` - not this box.\n// ---------------------------------------------------------------------------\n\n// ---- src/shared/text.js\n// Small, dependency-free helpers shared by several Code nodes.\n// Everything in src/ is plain JavaScript that runs both under Node (tests)\n// and inside an n8n Code node (after scripts/build-workflows.mjs inlines it).\n\n/** Collapse runs of whitespace and trim. Non-strings become ''. */\nfunction cleanText(value) {\n  if (value === null || value === undefined) return '';\n  return String(value).replace(/\\s+/g, ' ').trim();\n}\n\n/** Escape text for Telegram's HTML parse mode. */\nfunction escapeHtml(value) {\n  return String(value ?? '')\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;');\n}\n\n/**\n * Cut text to `max` characters on a word boundary and say so, instead of\n * cutting silently. Used only for display surfaces with hard limits\n * (Notion text blocks, Telegram messages) - never for LLM input.\n */\nfunction clip(value, max, notice = ' [...truncated]') {\n  const text = String(value ?? '');\n  if (text.length <= max) return text;\n  const room = Math.max(0, max - notice.length);\n  const cut = text.slice(0, room);\n  const lastSpace = cut.lastIndexOf(' ');\n  return (lastSpace > room * 0.6 ? cut.slice(0, lastSpace) : cut) + notice;\n}\n\n/** 32-bit FNV-1a hash as 8 hex chars. Deterministic, no crypto module needed. */\nfunction fnv1a(input, seed = 0x811c9dc5) {\n  let hash = seed >>> 0;\n  const str = String(input);\n  for (let i = 0; i < str.length; i++) {\n    hash ^= str.charCodeAt(i);\n    hash = Math.imul(hash, 0x01000193) >>> 0;\n  }\n  return hash.toString(16).padStart(8, '0');\n}\n\n/**\n * Deterministic UUID-shaped id (Qdrant accepts UUID strings as point ids).\n * Not RFC-4122 random - it is a stable fingerprint so re-ingesting the same\n * chunk overwrites the same point instead of duplicating it.\n */\nfunction stableUuid(input) {\n  const h = [0x811c9dc5, 0x01000193, 0x9e3779b9, 0x85ebca6b].map((seed) => fnv1a(input, seed)).join('');\n  return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20, 32)}`;\n}\n\n/** YYYY-MM-DD for a Date in the given IANA timezone. */\nfunction isoDateInZone(date, timeZone) {\n  return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);\n}\n\n/** True for a real calendar date in YYYY-MM-DD form (rejects 2026-02-30). */\nfunction isValidIsoDate(value) {\n  if (typeof value !== 'string' || !/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return false;\n  const [y, m, d] = value.split('-').map(Number);\n  const dt = new Date(Date.UTC(y, m - 1, d));\n  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;\n}\n\n// ---- src/shared/llm-response.js\n// Read the text out of an LLM HTTP response, for either provider.\n//\n// Anthropic Messages API: content is an array of blocks. With adaptive\n// thinking on, `thinking` blocks can come before the `text` block, and with\n// server-side fallbacks a `fallback` block marks a model switch - so we never\n// assume content[0] is the answer. stop_reason must be checked before the\n// content is trusted.\n//\n// Ollama /api/chat (stream: false): { message: { content }, done_reason }.\n\n/**\n * @returns {{ ok: true, text: string, provider: string, model: string|null, fellBack: boolean }\n *         | { ok: false, error: string, provider: string, retryable: boolean }}\n */\nfunction readLlmText(response) {\n  if (!response || typeof response !== 'object') {\n    return { ok: false, provider: 'unknown', error: 'Empty response from LLM', retryable: true };\n  }\n  // n8n HTTP node with \"continue\" error handling puts failures under `error`.\n  if (response.error && !response.content && !response.message) {\n    const msg = typeof response.error === 'string' ? response.error : response.error.message || JSON.stringify(response.error);\n    return { ok: false, provider: 'unknown', error: `LLM request failed: ${msg}`, retryable: true };\n  }\n\n  if (Array.isArray(response.content)) {\n    const provider = 'anthropic';\n    if (response.type === 'error') {\n      return { ok: false, provider, error: `Anthropic error: ${response.error?.message || 'unknown'}`, retryable: false };\n    }\n    if (response.stop_reason === 'refusal') {\n      const category = response.stop_details?.category || 'unspecified';\n      return { ok: false, provider, error: `Claude declined the request (category: ${category})`, retryable: false };\n    }\n    if (response.stop_reason === 'max_tokens') {\n      return { ok: false, provider, error: 'Claude hit max_tokens - output is incomplete. Raise maxOutputTokens in the Config node.', retryable: false };\n    }\n    const text = response.content\n      .filter((b) => b && b.type === 'text' && typeof b.text === 'string')\n      .map((b) => b.text)\n      .join('');\n    if (!text.trim()) {\n      return { ok: false, provider, error: 'Claude returned no text block', retryable: true };\n    }\n    const fellBack = response.content.some((b) => b && b.type === 'fallback');\n    return { ok: true, provider, text, model: response.model || null, fellBack };\n  }\n\n  if (response.message && typeof response.message.content === 'string') {\n    const provider = 'ollama';\n    if (response.done_reason === 'length') {\n      return { ok: false, provider, error: 'Ollama stopped at num_predict - output is incomplete', retryable: false };\n    }\n    const text = response.message.content;\n    if (!text.trim()) return { ok: false, provider, error: 'Ollama returned an empty message', retryable: true };\n    return { ok: true, provider, text, model: response.model || null, fellBack: false };\n  }\n\n  return { ok: false, provider: 'unknown', error: 'Unrecognised LLM response shape', retryable: false };\n}\n\n// ---- src/docqa/rag.js\n// Retrieval-augmented answers with citations, entirely on the local network:\n// question -> Ollama embedding -> Qdrant search -> Ollama chat -> citations.\n\nfunction normalizeQuestion(input) {\n  const body = input?.body ?? input ?? {};\n  const question = cleanText(body.question ?? body.q ?? body.Question);\n  if (!question) return { ok: false, status: 400, error: 'Send JSON like {\"question\": \"When is the boiler service due?\"}' };\n  if (question.length > 1000) return { ok: false, status: 400, error: 'Question is too long (max 1000 characters)' };\n  const topK = Math.min(Math.max(Number(body.topK) || 0, 0), 12) || null;\n  return { ok: true, question, topK };\n}\n\n/**\n * @param {string} question\n * @param {object[]} hits  Qdrant search results: { id, score, payload: { path, heading, text } }\n * @param {object} config\n */\nfunction buildRagRequest(question, hits, config = {}) {\n  const minScore = Number(config.minScore ?? 0.35);\n  const sources = (Array.isArray(hits) ? hits : [])\n    .filter((h) => h && h.payload && typeof h.score === 'number' && h.score >= minScore)\n    .map((h, i) => ({\n      n: i + 1,\n      path: h.payload.path,\n      heading: h.payload.heading || null,\n      chunkIndex: h.payload.chunkIndex,\n      score: Math.round(h.score * 1000) / 1000,\n      text: h.payload.text,\n    }));\n\n  if (sources.length === 0) return { hasSources: false, sources: [] };\n\n  const context = sources\n    .map((s) => `[${s.n}] ${s.path}${s.heading ? ` > ${s.heading}` : ''}\\n${s.text}`)\n    .join('\\n\\n---\\n\\n');\n\n  const system = `You answer questions about a household's private documents.\nAnswer only from the numbered sources. After every sentence that uses a source, cite it like [1] or [2][3].\nIf the sources do not contain the answer, reply exactly: \"I couldn't find that in the documents.\"\nBe brief: at most 5 sentences. Never guess dates, amounts, policy numbers or phone numbers.`;\n\n  return {\n    hasSources: true,\n    sources,\n    request: {\n      model: config.chatModel || 'llama3.1:8b',\n      stream: false,\n      options: { temperature: 0.1, num_ctx: 8192 },\n      messages: [\n        { role: 'system', content: system },\n        { role: 'user', content: `Sources:\\n\\n${context}\\n\\nQuestion: ${question}` },\n      ],\n    },\n  };\n}\n\n/**\n * Map [n] markers in the answer to sources. Citations to sources that do not\n * exist are removed (small local models sometimes invent \"[7]\").\n */\nfunction formatAnswer(llmResponse, sources, question) {\n  const read = readLlmText(llmResponse);\n  if (!read.ok) return { ok: false, question, error: read.error, answer: null, citations: [] };\n\n  const valid = new Set(sources.map((s) => s.n));\n  const invalid = new Set();\n  const used = new Set();\n  const answer = read.text\n    .replace(/\\[(\\d+)\\]/g, (m, d) => {\n      const n = Number(d);\n      if (valid.has(n)) {\n        used.add(n);\n        return m;\n      }\n      invalid.add(n);\n      return '';\n    })\n    .replace(/[ \\t]+([.,;:])/g, '$1')\n    .trim();\n\n  const notFound = /couldn't find that in the documents/i.test(answer);\n  const citations = sources\n    .filter((s) => used.has(s.n))\n    .map((s) => ({ n: s.n, path: s.path, heading: s.heading, score: s.score, excerpt: clip(s.text, 240) }));\n\n  return {\n    ok: true,\n    question,\n    answer,\n    grounded: !notFound && citations.length > 0,\n    citations,\n    warnings: [\n      ...(invalid.size ? [`Removed citations to non-existent sources: ${[...invalid].join(', ')}`] : []),\n      ...(!notFound && citations.length === 0 ? ['Answer has no citations - treat it with caution'] : []),\n    ],\n    model: read.model,\n  };\n}\n\n// ---- n8n entry point\n\nconst config = $('Config').first().json;\nconst q = $('Validate Question').first().json;\nconst hits = $input.first().json.result ?? [];\nreturn [{ json: { question: q.question, ...buildRagRequest(q.question, hits, config) } }];\n"
+      },
+      "id": "5eae450a-f8a4-4120-aed9-c46c6386449c",
+      "name": "Build Grounded Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1580,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b25e694d-f67f-40d1-b12c-8d19a0e9446c",
+              "leftValue": "={{ $json.hasSources }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "acfe4b88-9e98-4831-8d77-af2a43a4367f",
+      "name": "Found Sources?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1800,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.ollamaBaseUrl }}/api/chat",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.request) }}",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "402bb123-eb54-4dbe-85a9-13c0c740cc2e",
+      "name": "Ollama: Answer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2020,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---------------------------------------------------------------------------\n// GENERATED by scripts/build-workflows.mjs from: src/shared/text.js, src/shared/llm-response.js, src/docqa/rag.js\n// Edit the files in src/ (unit-tested) and run `npm run build` - not this box.\n// ---------------------------------------------------------------------------\n\n// ---- src/shared/text.js\n// Small, dependency-free helpers shared by several Code nodes.\n// Everything in src/ is plain JavaScript that runs both under Node (tests)\n// and inside an n8n Code node (after scripts/build-workflows.mjs inlines it).\n\n/** Collapse runs of whitespace and trim. Non-strings become ''. */\nfunction cleanText(value) {\n  if (value === null || value === undefined) return '';\n  return String(value).replace(/\\s+/g, ' ').trim();\n}\n\n/** Escape text for Telegram's HTML parse mode. */\nfunction escapeHtml(value) {\n  return String(value ?? '')\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;');\n}\n\n/**\n * Cut text to `max` characters on a word boundary and say so, instead of\n * cutting silently. Used only for display surfaces with hard limits\n * (Notion text blocks, Telegram messages) - never for LLM input.\n */\nfunction clip(value, max, notice = ' [...truncated]') {\n  const text = String(value ?? '');\n  if (text.length <= max) return text;\n  const room = Math.max(0, max - notice.length);\n  const cut = text.slice(0, room);\n  const lastSpace = cut.lastIndexOf(' ');\n  return (lastSpace > room * 0.6 ? cut.slice(0, lastSpace) : cut) + notice;\n}\n\n/** 32-bit FNV-1a hash as 8 hex chars. Deterministic, no crypto module needed. */\nfunction fnv1a(input, seed = 0x811c9dc5) {\n  let hash = seed >>> 0;\n  const str = String(input);\n  for (let i = 0; i < str.length; i++) {\n    hash ^= str.charCodeAt(i);\n    hash = Math.imul(hash, 0x01000193) >>> 0;\n  }\n  return hash.toString(16).padStart(8, '0');\n}\n\n/**\n * Deterministic UUID-shaped id (Qdrant accepts UUID strings as point ids).\n * Not RFC-4122 random - it is a stable fingerprint so re-ingesting the same\n * chunk overwrites the same point instead of duplicating it.\n */\nfunction stableUuid(input) {\n  const h = [0x811c9dc5, 0x01000193, 0x9e3779b9, 0x85ebca6b].map((seed) => fnv1a(input, seed)).join('');\n  return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20, 32)}`;\n}\n\n/** YYYY-MM-DD for a Date in the given IANA timezone. */\nfunction isoDateInZone(date, timeZone) {\n  return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);\n}\n\n/** True for a real calendar date in YYYY-MM-DD form (rejects 2026-02-30). */\nfunction isValidIsoDate(value) {\n  if (typeof value !== 'string' || !/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return false;\n  const [y, m, d] = value.split('-').map(Number);\n  const dt = new Date(Date.UTC(y, m - 1, d));\n  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;\n}\n\n// ---- src/shared/llm-response.js\n// Read the text out of an LLM HTTP response, for either provider.\n//\n// Anthropic Messages API: content is an array of blocks. With adaptive\n// thinking on, `thinking` blocks can come before the `text` block, and with\n// server-side fallbacks a `fallback` block marks a model switch - so we never\n// assume content[0] is the answer. stop_reason must be checked before the\n// content is trusted.\n//\n// Ollama /api/chat (stream: false): { message: { content }, done_reason }.\n\n/**\n * @returns {{ ok: true, text: string, provider: string, model: string|null, fellBack: boolean }\n *         | { ok: false, error: string, provider: string, retryable: boolean }}\n */\nfunction readLlmText(response) {\n  if (!response || typeof response !== 'object') {\n    return { ok: false, provider: 'unknown', error: 'Empty response from LLM', retryable: true };\n  }\n  // n8n HTTP node with \"continue\" error handling puts failures under `error`.\n  if (response.error && !response.content && !response.message) {\n    const msg = typeof response.error === 'string' ? response.error : response.error.message || JSON.stringify(response.error);\n    return { ok: false, provider: 'unknown', error: `LLM request failed: ${msg}`, retryable: true };\n  }\n\n  if (Array.isArray(response.content)) {\n    const provider = 'anthropic';\n    if (response.type === 'error') {\n      return { ok: false, provider, error: `Anthropic error: ${response.error?.message || 'unknown'}`, retryable: false };\n    }\n    if (response.stop_reason === 'refusal') {\n      const category = response.stop_details?.category || 'unspecified';\n      return { ok: false, provider, error: `Claude declined the request (category: ${category})`, retryable: false };\n    }\n    if (response.stop_reason === 'max_tokens') {\n      return { ok: false, provider, error: 'Claude hit max_tokens - output is incomplete. Raise maxOutputTokens in the Config node.', retryable: false };\n    }\n    const text = response.content\n      .filter((b) => b && b.type === 'text' && typeof b.text === 'string')\n      .map((b) => b.text)\n      .join('');\n    if (!text.trim()) {\n      return { ok: false, provider, error: 'Claude returned no text block', retryable: true };\n    }\n    const fellBack = response.content.some((b) => b && b.type === 'fallback');\n    return { ok: true, provider, text, model: response.model || null, fellBack };\n  }\n\n  if (response.message && typeof response.message.content === 'string') {\n    const provider = 'ollama';\n    if (response.done_reason === 'length') {\n      return { ok: false, provider, error: 'Ollama stopped at num_predict - output is incomplete', retryable: false };\n    }\n    const text = response.message.content;\n    if (!text.trim()) return { ok: false, provider, error: 'Ollama returned an empty message', retryable: true };\n    return { ok: true, provider, text, model: response.model || null, fellBack: false };\n  }\n\n  return { ok: false, provider: 'unknown', error: 'Unrecognised LLM response shape', retryable: false };\n}\n\n// ---- src/docqa/rag.js\n// Retrieval-augmented answers with citations, entirely on the local network:\n// question -> Ollama embedding -> Qdrant search -> Ollama chat -> citations.\n\nfunction normalizeQuestion(input) {\n  const body = input?.body ?? input ?? {};\n  const question = cleanText(body.question ?? body.q ?? body.Question);\n  if (!question) return { ok: false, status: 400, error: 'Send JSON like {\"question\": \"When is the boiler service due?\"}' };\n  if (question.length > 1000) return { ok: false, status: 400, error: 'Question is too long (max 1000 characters)' };\n  const topK = Math.min(Math.max(Number(body.topK) || 0, 0), 12) || null;\n  return { ok: true, question, topK };\n}\n\n/**\n * @param {string} question\n * @param {object[]} hits  Qdrant search results: { id, score, payload: { path, heading, text } }\n * @param {object} config\n */\nfunction buildRagRequest(question, hits, config = {}) {\n  const minScore = Number(config.minScore ?? 0.35);\n  const sources = (Array.isArray(hits) ? hits : [])\n    .filter((h) => h && h.payload && typeof h.score === 'number' && h.score >= minScore)\n    .map((h, i) => ({\n      n: i + 1,\n      path: h.payload.path,\n      heading: h.payload.heading || null,\n      chunkIndex: h.payload.chunkIndex,\n      score: Math.round(h.score * 1000) / 1000,\n      text: h.payload.text,\n    }));\n\n  if (sources.length === 0) return { hasSources: false, sources: [] };\n\n  const context = sources\n    .map((s) => `[${s.n}] ${s.path}${s.heading ? ` > ${s.heading}` : ''}\\n${s.text}`)\n    .join('\\n\\n---\\n\\n');\n\n  const system = `You answer questions about a household's private documents.\nAnswer only from the numbered sources. After every sentence that uses a source, cite it like [1] or [2][3].\nIf the sources do not contain the answer, reply exactly: \"I couldn't find that in the documents.\"\nBe brief: at most 5 sentences. Never guess dates, amounts, policy numbers or phone numbers.`;\n\n  return {\n    hasSources: true,\n    sources,\n    request: {\n      model: config.chatModel || 'llama3.1:8b',\n      stream: false,\n      options: { temperature: 0.1, num_ctx: 8192 },\n      messages: [\n        { role: 'system', content: system },\n        { role: 'user', content: `Sources:\\n\\n${context}\\n\\nQuestion: ${question}` },\n      ],\n    },\n  };\n}\n\n/**\n * Map [n] markers in the answer to sources. Citations to sources that do not\n * exist are removed (small local models sometimes invent \"[7]\").\n */\nfunction formatAnswer(llmResponse, sources, question) {\n  const read = readLlmText(llmResponse);\n  if (!read.ok) return { ok: false, question, error: read.error, answer: null, citations: [] };\n\n  const valid = new Set(sources.map((s) => s.n));\n  const invalid = new Set();\n  const used = new Set();\n  const answer = read.text\n    .replace(/\\[(\\d+)\\]/g, (m, d) => {\n      const n = Number(d);\n      if (valid.has(n)) {\n        used.add(n);\n        return m;\n      }\n      invalid.add(n);\n      return '';\n    })\n    .replace(/[ \\t]+([.,;:])/g, '$1')\n    .trim();\n\n  const notFound = /couldn't find that in the documents/i.test(answer);\n  const citations = sources\n    .filter((s) => used.has(s.n))\n    .map((s) => ({ n: s.n, path: s.path, heading: s.heading, score: s.score, excerpt: clip(s.text, 240) }));\n\n  return {\n    ok: true,\n    question,\n    answer,\n    grounded: !notFound && citations.length > 0,\n    citations,\n    warnings: [\n      ...(invalid.size ? [`Removed citations to non-existent sources: ${[...invalid].join(', ')}`] : []),\n      ...(!notFound && citations.length === 0 ? ['Answer has no citations - treat it with caution'] : []),\n    ],\n    model: read.model,\n  };\n}\n\n// ---- n8n entry point\n\nconst prompt = $('Build Grounded Prompt').first().json;\nreturn [{ json: formatAnswer($input.first().json, prompt.sources, prompt.question) }];\n"
+      },
+      "id": "a7053d27-ae77-4eaa-88c4-51f87815b8be",
+      "name": "Format Answer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2240,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "28d5d0b5-b287-456f-ae54-4db3a9a781d0",
+      "name": "Respond: Answer",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2460,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, question: $json.question, answer: \"I couldn't find that in the documents.\", grounded: false, citations: [] }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "8fb93c05-5974-4e15-ae64-11e715850126",
+      "name": "Respond: Not Found",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2020,
+        320
+      ]
+    }
+  ],
+  "connections": {
+    "Question Webhook": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual: Re-index Documents": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Nightly Re-index 02:30": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Question or Re-index?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Question or Re-index?": {
+      "main": [
+        [
+          {
+            "node": "Validate Question",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Qdrant: Collection Exists?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qdrant: Collection Exists?": {
+      "main": [
+        [
+          {
+            "node": "Needs Collection?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs Collection?": {
+      "main": [
+        [
+          {
+            "node": "Qdrant: Create Collection",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Read Documents",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qdrant: Create Collection": {
+      "main": [
+        [
+          {
+            "node": "Read Documents",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Documents": {
+      "main": [
+        [
+          {
+            "node": "Extract Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Text": {
+      "main": [
+        [
+          {
+            "node": "Chunk Documents",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chunk Documents": {
+      "main": [
+        [
+          {
+            "node": "Ollama: Embed Chunks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama: Embed Chunks": {
+      "main": [
+        [
+          {
+            "node": "Build Qdrant Points",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Qdrant Points": {
+      "main": [
+        [
+          {
+            "node": "Qdrant: Delete Old Chunks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qdrant: Delete Old Chunks": {
+      "main": [
+        [
+          {
+            "node": "Split Upsert Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Upsert Batches": {
+      "main": [
+        [
+          {
+            "node": "Qdrant: Upsert Points",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Question": {
+      "main": [
+        [
+          {
+            "node": "Question OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Question OK?": {
+      "main": [
+        [
+          {
+            "node": "Ollama: Embed Question",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond: Bad Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama: Embed Question": {
+      "main": [
+        [
+          {
+            "node": "Qdrant: Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qdrant: Search": {
+      "main": [
+        [
+          {
+            "node": "Build Grounded Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Grounded Prompt": {
+      "main": [
+        [
+          {
+            "node": "Found Sources?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Found Sources?": {
+      "main": [
+        [
+          {
+            "node": "Ollama: Answer",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond: Not Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama: Answer": {
+      "main": [
+        [
+          {
+            "node": "Format Answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Answer": {
+      "main": [
+        [
+          {
+            "node": "Respond: Answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "callerPolicy": "workflowsFromSameOwner",
+    "timezone": "America/New_York",
+    "errorWorkflow": "HmErrorHandler01"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": [
+    {
+      "id": "HmTagDemo0000001",
+      "name": "demo"
+    },
+    {
+      "id": "HmTagLocalOnly01",
+      "name": "local-only"
+    },
+    {
+      "id": "HmTagOllama00001",
+      "name": "ollama"
+    },
+    {
+      "id": "HmTagRag00000001",
+      "name": "rag"
+    }
+  ]
+}

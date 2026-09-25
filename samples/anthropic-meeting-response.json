@@ -1,0 +1,17 @@
+{
+  "_comment": "Shape of a Messages API response with adaptive thinking (empty thinking block, as with the default display) followed by the structured JSON text block. Content is illustrative.",
+  "id": "msg_demo_01",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-opus-5",
+  "stop_reason": "end_turn",
+  "stop_details": null,
+  "content": [
+    { "type": "thinking", "thinking": "", "signature": "demo-signature" },
+    {
+      "type": "text",
+      "text": "{\"title\":\"Weekly planning: boiler, school trip, insurance\",\"summary\":\"Sam and Jordan reviewed three household items. Jordan will book the annual boiler service before October. Sam will return Maya's school trip form and payment. They agreed to renew the car insurance with the current provider. Thanksgiving plans are still open.\",\"keyPoints\":[\"Boiler annual service is due before October\",\"School trip form and $40 payment are due on the 29th\",\"Current insurance quote is acceptable\"],\"decisions\":[\"Renew car insurance with the current company without shopping around\"],\"actionItems\":[{\"task\":\"Call Brightwell Heating and book the annual boiler service\",\"owner\":\"Jordan\",\"dueDate\":\"2026-09-25\",\"priority\":\"high\",\"sourceQuote\":\"I'll call Brightwell Heating and book it by Friday.\"},{\"task\":\"Submit Maya's school trip form and $40 payment\",\"owner\":\"Sam Alder\",\"dueDate\":\"2026-09-29\",\"priority\":\"normal\",\"sourceQuote\":\"due to the school on the 29th. I can do that one.\"},{\"task\":\"Check whether smoke alarm batteries need replacing\",\"owner\":\"Unassigned\",\"dueDate\":null,\"priority\":\"low\",\"sourceQuote\":\"Somebody should also check whether the smoke alarm batteries need replacing\"}],\"openQuestions\":[\"Thanksgiving at home or at Grandma's? Decide next week.\"]}"
+    }
+  ],
+  "usage": { "input_tokens": 912, "output_tokens": 410 }
+}

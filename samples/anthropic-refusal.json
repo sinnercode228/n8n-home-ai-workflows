@@ -1,0 +1,7 @@
+{
+  "type": "message",
+  "model": "claude-opus-5",
+  "stop_reason": "refusal",
+  "stop_details": { "type": "refusal", "category": null, "explanation": "demo" },
+  "content": []
+}

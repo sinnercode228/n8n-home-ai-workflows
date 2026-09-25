@@ -1,0 +1,28 @@
+{
+  "_comment": "Events as returned by the n8n Google Calendar node (getAll, singleEvents=true), grouped by which configured calendar they came from. Fictional.",
+  "now": "2026-09-25T11:00:00Z",
+  "timezone": "America/New_York",
+  "calendars": [
+    { "id": "family@group.calendar.google.com", "label": "Family", "member": "Everyone" },
+    { "id": "sam@home.example", "label": "Sam", "member": "Sam" },
+    { "id": "jordan@home.example", "label": "Jordan", "member": "Jordan" },
+    { "id": "kids@group.calendar.google.com", "label": "Kids", "member": "Maya & Leo" }
+  ],
+  "eventsByCalendar": [
+    [
+      { "id": "a1", "iCalUID": "trash@demo", "summary": "Recycling out", "start": { "date": "2026-09-25" }, "end": { "date": "2026-09-26" }, "status": "confirmed" }
+    ],
+    [
+      { "id": "s1", "iCalUID": "dentist@demo", "summary": "Dentist - Sam", "location": "Maple St Dental", "start": { "dateTime": "2026-09-25T08:30:00-04:00" }, "end": { "dateTime": "2026-09-25T09:15:00-04:00" }, "status": "confirmed" },
+      { "id": "s2", "iCalUID": "pickup@demo", "summary": "School pickup", "start": { "dateTime": "2026-09-25T15:15:00-04:00" }, "end": { "dateTime": "2026-09-25T15:45:00-04:00" }, "status": "confirmed" }
+    ],
+    [
+      { "id": "j1", "iCalUID": "standup@demo", "summary": "Work call", "start": { "dateTime": "2026-09-25T15:00:00-04:00" }, "end": { "dateTime": "2026-09-25T16:00:00-04:00" }, "status": "confirmed" },
+      { "id": "j2", "iCalUID": "pickup@demo", "summary": "School pickup", "start": { "dateTime": "2026-09-25T15:15:00-04:00" }, "end": { "dateTime": "2026-09-25T15:45:00-04:00" }, "status": "confirmed" },
+      { "id": "j3", "iCalUID": "cancelled@demo", "summary": "Gym", "start": { "dateTime": "2026-09-25T06:30:00-04:00" }, "end": { "dateTime": "2026-09-25T07:30:00-04:00" }, "status": "cancelled" }
+    ],
+    [
+      { "id": "k1", "iCalUID": "soccer@demo", "summary": "Leo soccer practice", "location": "Riverside Field 2", "description": "Bring water bottle and shin guards", "start": { "dateTime": "2026-09-25T17:30:00-04:00" }, "end": { "dateTime": "2026-09-25T18:30:00-04:00" }, "status": "confirmed" }
+    ]
+  ]
+}

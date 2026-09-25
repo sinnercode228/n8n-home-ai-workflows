@@ -1,0 +1,14 @@
+# HTTPS + basic auth in front of the n8n editor (profile: proxy).
+# Generate the hash with:  docker run --rm caddy:2 caddy hash-password --plaintext 'your-password'
+{$N8N_DOMAIN} {
+	encode gzip
+
+	# Webhooks and the health check skip basic auth: webhooks carry their own
+	# shared-secret header (see README -> Credentials).
+	@editor not path /webhook/* /webhook-test/* /healthz
+	basic_auth @editor {
+		{$BASIC_AUTH_USER} {$BASIC_AUTH_HASH}
+	}
+
+	reverse_proxy n8n:5678
+}

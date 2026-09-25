@@ -1,0 +1,10 @@
+{
+  "_comment": "Illustrative Granola-style payload as relayed by Zapier/Make (fictional). Granola has no first-party webhook at the time of writing; field names depend on your relay.",
+  "granola_id": "gr_demo_5521",
+  "title": "Kitchen renovation call with contractor",
+  "created_at": "2026-09-23T15:30:00Z",
+  "link": "https://notes.granola.example/d/gr_demo_5521",
+  "attendees": [{ "name": "Jordan Alder" }, { "name": "Priya (Oakline Builders)" }],
+  "notes_markdown": "- quote revised\n- start date moved",
+  "transcript": "Priya: The revised quote is 18,400 including the island.\nJordan: That works. Can you send the updated contract?\nPriya: I'll email it tomorrow.\nJordan: I'll sign and return it by next Wednesday.\nPriya: Start date moves to October 20 because of the countertop lead time."
+}

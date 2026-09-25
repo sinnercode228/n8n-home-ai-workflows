@@ -1,0 +1,6 @@
+{
+  "model": "llama3.1:8b",
+  "message": { "role": "assistant", "content": "The boiler needs its annual service every September or October [1]. The last one was on 2025-10-02, and the warranty requires a service at least every 13 months [1][7]." },
+  "done": true,
+  "done_reason": "stop"
+}

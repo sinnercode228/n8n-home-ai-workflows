@@ -1,0 +1,9 @@
+{
+  "result": [
+    { "id": "3f0a1c2e-0b1d-5e2f-a3c4-5d6e7f809a1b", "version": 3, "score": 0.82, "payload": { "path": "home/boiler.md", "chunkIndex": 1, "heading": "Annual service", "text": "The boiler (Veritherm C30) needs an annual service every September or October. Last service: 2025-10-02 by Brightwell Heating. Warranty requires a service at least every 13 months." } },
+    { "id": "7a1b2c3d-4e5f-5a6b-a7c8-9d0e1f2a3b4c", "version": 3, "score": 0.61, "payload": { "path": "home/boiler.md", "chunkIndex": 2, "heading": "Pressure", "text": "Normal pressure is 1.0-1.5 bar when cold. If it drops below 0.8 bar, top up using the filling loop under the boiler." } },
+    { "id": "9b8a7c6d-5e4f-5a3b-a2c1-0d9e8f7a6b5c", "version": 1, "score": 0.21, "payload": { "path": "insurance/home-policy.md", "chunkIndex": 0, "heading": "Summary", "text": "Home insurance renews every March." } }
+  ],
+  "status": "ok",
+  "time": 0.002
+}

@@ -1,0 +1,14 @@
+{
+  "execution": {
+    "id": "231",
+    "url": "http://localhost:5678/workflow/HmMeetingNotes01/executions/231",
+    "retryOf": null,
+    "error": {
+      "message": "Authorization failed - please check your credentials: 401 invalid x-api-key sk-ant-demo-NOT-A-REAL-KEY-000000",
+      "stack": "NodeApiError: Authorization failed\n    at ExecuteContext.execute (/usr/local/lib/node_modules/n8n/...)"
+    },
+    "lastNodeExecuted": "Claude: Extract Notes",
+    "mode": "webhook"
+  },
+  "workflow": { "id": "HmMeetingNotes01", "name": "Meeting notes -> Notion (Claude)" }
+}

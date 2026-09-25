@@ -1,0 +1,20 @@
+{
+  "_comment": "Illustrative Fathom-style payload (fictional people). Real field names vary by plan/version - adapt src/meeting/normalize-transcript.js.",
+  "recording_id": 918273,
+  "meeting_title": "Alder family weekly planning",
+  "share_url": "https://fathom.example/share/demo-918273",
+  "recording_start_time": "2026-09-21T23:00:00Z",
+  "recording_end_time": "2026-09-21T23:24:00Z",
+  "calendar_invitees": [
+    { "name": "Sam Alder", "email": "sam@home.example" },
+    { "name": "Jordan Alder", "email": "jordan@home.example" }
+  ],
+  "transcript": [
+    { "speaker": { "display_name": "Sam Alder" }, "text": "Okay, three things tonight: the boiler service, Maya's school trip form, and the car insurance renewal.", "timestamp": "00:00:04" },
+    { "speaker": { "display_name": "Jordan Alder" }, "text": "The boiler guy said the annual service is due before October. I'll call Brightwell Heating and book it by Friday.", "timestamp": "00:01:12" },
+    { "speaker": { "display_name": "Sam Alder" }, "text": "Great. Maya's trip form and the forty dollar payment are due to the school on the 29th. I can do that one.", "timestamp": "00:03:40" },
+    { "speaker": { "display_name": "Jordan Alder" }, "text": "For insurance, let's just renew with the current company, the quote was fine. We agreed not to shop around this year.", "timestamp": "00:07:02" },
+    { "speaker": { "display_name": "Sam Alder" }, "text": "Agreed. Somebody should also check whether the smoke alarm batteries need replacing, no rush.", "timestamp": "00:09:15" },
+    { "speaker": { "display_name": "Jordan Alder" }, "text": "Do we want to do Thanksgiving here or at Grandma's? Let's decide next week.", "timestamp": "00:12:30" }
+  ]
+}

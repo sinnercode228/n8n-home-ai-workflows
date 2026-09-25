@@ -1,0 +1,147 @@
+# Home automation stack for a Mac mini / small home server.
+#
+#   cp .env.example .env         # then fill in N8N_ENCRYPTION_KEY etc.
+#   docker compose up -d         # n8n (+ Ollama and Qdrant via COMPOSE_PROFILES)
+#
+# Profiles (set COMPOSE_PROFILES in .env, comma-separated):
+#   ollama  - local LLM + embeddings in Docker. On Apple Silicon, Docker cannot
+#             use the GPU, so prefer the native Ollama app and point the
+#             workflows' Config node at http://host.docker.internal:11434.
+#   qdrant  - vector database for the private document Q&A workflow.
+#   proxy   - Caddy in front of n8n: HTTPS + an extra password on the editor.
+#
+# Nothing is published beyond 127.0.0.1 unless you enable the proxy profile.
+
+name: home-automation
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:${N8N_VERSION:-2.40.6}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5678:5678"
+    environment:
+      # Encrypts every credential stored in n8n. Losing it = re-entering all
+      # API keys. Keep a copy in your password manager, NOT only on this disk.
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?Set N8N_ENCRYPTION_KEY in .env (openssl rand -hex 32)}
+      GENERIC_TIMEZONE: ${TIMEZONE:-America/New_York}
+      TZ: ${TIMEZONE:-America/New_York}
+      N8N_HOST: ${N8N_HOST:-localhost}
+      N8N_PROTOCOL: ${N8N_PROTOCOL:-http}
+      WEBHOOK_URL: ${N8N_PUBLIC_URL:-http://localhost:5678/}
+      N8N_SECURE_COOKIE: ${N8N_SECURE_COOKIE:-true}
+      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+      N8N_RUNNERS_ENABLED: "true"
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "true"
+      N8N_RESTRICT_FILE_ACCESS_TO: /data/docs;/logs
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_PERSONALIZATION_ENABLED: "false"
+      EXECUTIONS_DATA_PRUNE: "true"
+      EXECUTIONS_DATA_MAX_AGE: "336"          # keep 14 days of run history
+      N8N_DEFAULT_BINARY_DATA_MODE: filesystem
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ${DOCS_DIR:-./documents}:/data/docs:ro   # documents for private Q&A (read-only)
+      - ./logs:/logs                             # error-handler writes n8n-errors.jsonl here
+      - ./backups:/backups                       # scripts/backup.sh exports land here
+    extra_hosts:
+      - "host.docker.internal:host-gateway"      # reach a natively installed Ollama
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5678/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    depends_on:
+      ollama:
+        condition: service_healthy
+        required: false
+      qdrant:
+        condition: service_healthy
+        required: false
+    logging: *default-logging
+
+  ollama:
+    image: ollama/ollama:${OLLAMA_IMAGE_TAG:-latest}
+    profiles: ["ollama"]
+    restart: unless-stopped
+    # Not published to the host; n8n reaches it as http://ollama:11434.
+    # Uncomment to debug from the Mac itself:
+    # ports: ["127.0.0.1:11434:11434"]
+    environment:
+      OLLAMA_KEEP_ALIVE: 10m
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    logging: *default-logging
+
+  # One-shot: download the models the workflows expect, then exit.
+  ollama-models:
+    image: ollama/ollama:${OLLAMA_IMAGE_TAG:-latest}
+    profiles: ["ollama"]
+    restart: "no"
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["/bin/sh", "-c", "ollama pull ${OLLAMA_EMBED_MODEL:-nomic-embed-text} && ollama pull ${OLLAMA_CHAT_MODEL:-llama3.1:8b}"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    logging: *default-logging
+
+  qdrant:
+    image: qdrant/qdrant:${QDRANT_IMAGE_TAG:-latest}
+    profiles: ["qdrant"]
+    restart: unless-stopped
+    # Internal only (http://qdrant:6333). Uncomment to open the dashboard locally:
+    # ports: ["127.0.0.1:6333:6333"]
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      QDRANT__TELEMETRY_DISABLED: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging: *default-logging
+
+  # Optional HTTPS reverse proxy with a second password on the n8n editor.
+  # n8n 1.x+ has its own login (owner account) - the old N8N_BASIC_AUTH_*
+  # variables were removed in n8n 1.0, so extra basic auth lives here instead.
+  # Webhook paths stay reachable (they are protected by header auth).
+  caddy:
+    image: caddy:2
+    profiles: ["proxy"]
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      N8N_DOMAIN: ${N8N_DOMAIN:-n8n.home.example}
+      BASIC_AUTH_USER: ${CADDY_BASIC_AUTH_USER:-family}
+      BASIC_AUTH_HASH: ${CADDY_BASIC_AUTH_HASH:-}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on:
+      n8n:
+        condition: service_healthy
+    logging: *default-logging
+
+volumes:
+  n8n_data:
+  ollama_data:
+  qdrant_data:
+  caddy_data:

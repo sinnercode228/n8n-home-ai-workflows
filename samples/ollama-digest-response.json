@@ -1,0 +1,7 @@
+{
+  "model": "llama3.1:8b",
+  "created_at": "2026-09-25T11:00:05Z",
+  "message": { "role": "assistant", "content": "Good morning, Alders! It's recycling day, so the bins go out. Sam has the dentist at 8:30. Sam and Jordan are both down for school pickup at 3:15, but Jordan also has a work call from 3 to 4, so check who is going. Leo has soccer at 5:30 - water bottle and shin guards." },
+  "done": true,
+  "done_reason": "stop"
+}
