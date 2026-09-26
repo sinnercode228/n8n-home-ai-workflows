@@ -1,5 +1,7 @@
 # n8n-home-ai-workflows
 
+**Русский** · [English](README.en.md)
+
 Четыре воркфлоу n8n для домашнего сервера на Docker Compose: заметки со встреч в Notion через Claude, утренняя сводка семейных календарей, ответы по домашним документам на локальной Ollama и общий обработчик ошибок. Compose поднимает для них n8n 2.40.6, а по профилям ещё Ollama, Qdrant и Caddy. Code-ноды собираются из модулей в `src/`, и тесты гоняют именно то, что лежит в JSON.
 
 | Воркфлоу | Запуск | Что делает | Сервисы, модель |
@@ -93,4 +95,6 @@ curl -X POST http://localhost:5678/webhook/doc-qa \
 
 Все 48 тестов написаны на `node:test`. CI повторяет шаги `npm run check` на Node 22 и 24, а на 24 ещё `docker compose config -q` со всеми профилями и `bash -n scripts/backup.sh`.
 
-Лицензия: [MIT](LICENSE).
+---
+
+Автор — Грешный Котик, беру заказы на похожие задачи: Telegram [@sinnercode](https://t.me/sinnercode). Лицензия [MIT](LICENSE).
