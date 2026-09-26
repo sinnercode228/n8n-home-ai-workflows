@@ -1,251 +1,96 @@
-# n8n Home AI Workflows
+# n8n-home-ai-workflows
 
-[![CI](https://github.com/sinnercode228/n8n-home-ai-workflows/actions/workflows/ci.yml/badge.svg)](https://github.com/sinnercode228/n8n-home-ai-workflows/actions/workflows/ci.yml)
-![n8n](https://img.shields.io/badge/n8n-2.40-EA4B71)
-![Claude API](https://img.shields.io/badge/Claude-Messages%20API-D97757)
-![Ollama](https://img.shields.io/badge/Ollama-local%20LLM-000000)
-![License: MIT](https://img.shields.io/badge/license-MIT-blue)
+Четыре воркфлоу n8n для домашнего сервера на Docker Compose: заметки со встреч в Notion через Claude, утренняя сводка семейных календарей, ответы по домашним документам на локальной Ollama и общий обработчик ошибок. Compose поднимает для них n8n 2.40.6, а по профилям ещё Ollama, Qdrant и Caddy. Code-ноды собираются из модулей в `src/`, и тесты гоняют именно то, что лежит в JSON.
 
-Four n8n workflows that run on a Mac mini or small home server, deployed with Docker Compose. Each one handles errors, keeps private data at home, and has tests.
+| Воркфлоу | Запуск | Что делает | Сервисы, модель |
+|---|---|---|---|
+| [`meeting-notes-to-notion`](workflows/meeting-notes-to-notion.json) | вебхук `POST /webhook/meeting-notes` | транскрипт → Claude → JSON с резюме, решениями и задачами → страница в Notion, задачи в Tasks, сроки в Google Calendar | Claude Messages API, `claude-opus-5`; Notion; Google Calendar; Telegram |
+| [`family-calendar-digest`](workflows/family-calendar-digest.json) | каждый день в 07:00 (`0 7 * * *`) | события дня из календарей семьи без дублей, с отмеченными пересечениями → текст от LLM → черновик в Gmail и Telegram | Google Calendar; `claude-opus-5` или Ollama `llama3.1:8b`; Gmail; Telegram |
+| [`private-doc-qa-local-llm`](workflows/private-doc-qa-local-llm.json) | вебхук `POST /webhook/doc-qa`; переиндексация в 02:30 (`30 2 * * *`) и вручную | ответ на вопрос по `.md` и `.txt` из папки документов со ссылками на источники | Ollama: `nomic-embed-text` (768 измерений), `llama3.1:8b`; Qdrant |
+| [`error-handler`](workflows/error-handler.json) | Error Trigger; на него указывает `settings.errorWorkflow` трёх остальных | запись в `/logs/n8n-errors.jsonl` с маскировкой ключей и токенов, алерт в Telegram | Telegram |
 
-| Workflow | What it does |
-|---|---|
-| **[Meeting notes → Notion](workflows/meeting-notes-to-notion.json)** | A meeting-recorder webhook (Fathom or Granola style) sends the transcript to **Claude**, which returns the summary, decisions and action items (owners + due dates) as **strict JSON**. The JSON is validated, then written to a Notion page and one Notion task per action item. Dated items can also go to Google Calendar |
-| **[Family calendar digest](workflows/family-calendar-digest.json)** | At 07:00: reads several Google calendars, removes duplicates and flags overlaps. Then **Claude or local Ollama** writes a plain-language digest, which becomes a **Gmail draft** and a **Telegram** message |
-| **[Private document Q&A](workflows/private-doc-qa-local-llm.json)** | Answers questions about household documents, with citations, using **only local** Ollama + Qdrant. Documents never leave the house, and CI enforces it |
-| **[Global error handler](workflows/error-handler.json)** | Every failure goes to a structured JSONL log (secrets redacted) and a plain-language Telegram alert, with duplicate alerts muted |
+Воркфлоу проходят валидатор и mock-прогоны на `samples/`, но с живыми аккаунтами Anthropic, Notion, Google и Telegram я их не запускал. Чанки файла, удалённого из `documents/`, остаются в Qdrant, упавший после удаления старых чанков upsert выключает эти файлы из поиска до следующей переиндексации, а повторно присланный транскрипт создаёт вторую страницу встречи и второй набор задач.
 
-> **Demo project.** The household (the Alder family), people, documents and IDs are fictional. No real credentials are included. Placeholders look like `REPLACE_WITH_...`. The workflows were imported into n8n and checked by the validator and the tests in this repo. They have not been run against live Anthropic, Notion or Google accounts here. See [What was verified](#what-was-verified).
+![Воркфлоу meeting-notes-to-notion в редакторе n8n, внизу петля Plan Retry → Retry? → Wait (Backoff)](docs/screenshots/meeting-notes-to-notion.png)
 
-![Meeting notes workflow in the n8n editor](docs/screenshots/meeting-notes-to-notion.png)
+Остальные холсты: [сводка календарей](docs/screenshots/family-calendar-digest.png), [Q&A по документам](docs/screenshots/private-doc-qa-local-llm.png), [обработчик ошибок](docs/screenshots/error-handler.png).
 
-## Why it's built this way
+## Почему логика не живёт в Code-нодах
 
-- **Built for failures.** Claude calls retry on 429/5xx/529 with exponential backoff and jitter through a Wait loop, and 4xx errors go straight to an alert. Model output is validated and repaired before anything is written. The digest falls back to a rule-based version if the LLM is down. Every workflow is connected to a global error handler.
-- **Privacy by design.** A diagram shows exactly [what goes to Claude and what stays local](docs/architecture.md#data-flow-what-stays-home-and-what-leaves). Calendar locations and notes don't go to the cloud unless you allow it. The document Q&A workflow is tagged `local-only`, and the validator fails if any node in it could reach a non-local host.
-- **Code in the Code nodes is tested.** The JavaScript lives in `src/` as plain modules with unit tests. `npm run build` inlines it into the workflow JSON. The validator fails on drift, and the mock-run tests execute the **actual** `jsCode` from each workflow in a Node `vm` sandbox against sample payloads.
-- **Current Claude API usage.** Messages API over HTTP Request, `output_config.format` (structured outputs), adaptive thinking (only `text` blocks are parsed), `stop_reason` checks for `refusal`/`max_tokens`, and optional server-side fallbacks. The model is set in each workflow's Config node (`claude-opus-5` by default).
-- **Owner-friendly operations.** A [household runbook](docs/runbook.md) covers restart, backups, restore, rotating API keys, the encryption key, and what to do for each alert type.
+n8n хранит код Code-ноды строкой `parameters.jsCode` прямо в JSON воркфлоу. Здесь все 18 таких строк сгенерированы. Логика лежит в `src/` как ES-модули, а [`scripts/lib/code-nodes.mjs`](scripts/lib/code-nodes.mjs) описывает, какие модули идут в какую ноду, плюс короткий `entry`, единственное место, которое обращается к `$input`, `$('Node')` и `$runIndex`.
 
-## Architecture
+`npm run build` ([`scripts/build-workflows.mjs`](scripts/build-workflows.mjs)) обходит относительные импорты, ставит зависимости раньше зависимых, вырезает `import` и `export` и падает на цикле импортов. `npm run check:build` выходит с кодом 1, если хоть один воркфлоу отличается от сборки, а [`scripts/validate.mjs`](scripts/validate.mjs) компилирует каждую Code-ноду через `new vm.Script(...)` и сравнивает её с тем, что получилось бы из `src/`. Поэтому правку из редактора n8n приходится руками переносить в `src/`.
 
-```mermaid
-flowchart LR
-  subgraph HOME["Home server - Docker Compose"]
-    N8N["n8n"]
-    OLL["Ollama"]
-    QD[("Qdrant")]
-    DOCS[("documents/")]
-  end
-  REC["Fathom / Granola"] -->|transcript webhook| N8N
-  N8N -->|transcript, calendar titles| CLAUDE["Claude API"]
-  N8N --> NOTION["Notion"] & GOOGLE["Google Calendar / Gmail"] & TG["Telegram"]
-  DOCS --> N8N <--> OLL
-  N8N <--> QD
-```
+Юнит-тесты гоняют модули напрямую, а [`tests/harness.mjs`](tests/harness.mjs) достаёт `jsCode` из `workflows/*.json` и выполняет его через `vm.runInNewContext` с поддельными переменными n8n. Ответы Claude, Ollama, Google Calendar и Qdrant для этих прогонов лежат в `samples/`.
 
-Per-workflow diagrams and the full local-vs-cloud data flow are in **[docs/architecture.md](docs/architecture.md)**.
+## Своя петля повторов для запроса к Claude
 
-### Meeting notes → Notion
+Error-выход ноды `Claude: Extract Notes` (`onError: continueErrorOutput`) ведёт в Code-ноду `Plan Retry`, дальше IF `Retry?` и `Wait (Backoff)`, откуда запрос возвращается в ту же HTTP-ноду; на скриншоте это нижняя петля. Зачем она, написано в шапке [`src/shared/backoff.js`](src/shared/backoff.js):
 
-```mermaid
-flowchart LR
-  W[Webhook] --> N[Normalize] --> B[Build request] --> H[Claude<br/>structured JSON]
-  H -->|ok| P[Parse, repair, validate] --> V{valid?}
-  V -->|yes| NP[Notion page] --> NT[Notion tasks] --> GC[Calendar deadline]
-  V -->|no| A[Alert]
-  H -->|error| R{retryable?}
-  R -->|yes| WT[Wait: backoff] --> H
-  R -->|no| A --> TG[Telegram]
-```
+> n8n's built-in "Retry On Fail" waits a fixed time (max 5 s) between tries. Rate limits (429) and overload (529) deserve real exponential backoff, and a 400/401 should not be retried at all - so the workflow loops through a Wait node using the plan computed here.
 
-### Family calendar digest
+Повторяются 408, 409, 429, 500, 502, 503, 504, 529 и сетевые ошибки без статуса, остальное сразу уходит алертом в Telegram. Счётчик попыток нигде не хранится. Номер упавшей попытки равен `$runIndex + 1`, а `$runIndex` n8n сам увеличивает на каждом проходе петли. Пауза случайная, от exp/2 до exp, где exp = min(300, 10 · 2^(n−1)) с, так что при `maxAttempts: 4` из Config выходит 5–10, 10–20 и 20–40 с, потом алерт. Вебхук отвечает 202 сразу (`responseMode: onReceived`), и сервис, приславший транскрипт, пауз не ждёт.
 
-```mermaid
-flowchart LR
-  S[07:00] --> G[Google Calendar x N] --> M[Merge, dedupe, overlaps] --> R{writer}
-  R -->|claude| C[Claude] --> D[Compose]
-  R -->|ollama| O[Ollama] --> D
-  R -->|no events| D
-  D --> GM[Gmail draft] & T[Telegram]
-```
+В сводке календарей у `Claude: Write Digest` обычный Retry On Fail (3 попытки через 5 с), после них [`digest.js`](src/calendar/digest.js) собирает сводку по шаблону без LLM.
 
-### Private document Q&A (local only)
+Запрос к Claude собирает [`src/meeting/claude-request.js`](src/meeting/claude-request.js): JSON Schema заметок в `output_config.format`, `output_config.effort: "medium"` и `fallbacks: "default"`. [`llm-response.js`](src/shared/llm-response.js) берёт текст только из блоков `text` и считает ошибкой `stop_reason: refusal` или `max_tokens`; тогда в Notion ничего не пишется и уходит алерт. При structured outputs до починки JSON в [`json-repair.js`](src/shared/json-repair.js) дело не доходит, она оставлена на случай локальной модели. Потом [`validate-notes.js`](src/meeting/validate-notes.js) проверяет сам JSON: без `summary` страница не создаётся, а несуществующая дата вроде `2026-02-30`, срок раньше встречи и дубли задач снимаются с предупреждением на странице.
 
-```mermaid
-flowchart LR
-  Q[POST question] --> E[Ollama embed] --> S[Qdrant search] --> P[Grounded prompt] --> L[Ollama answer] --> C[Check citations] --> R[JSON answer + sources]
-```
+## Какие данные уходят в Anthropic
 
-## Screenshots
+Транскрипт встречи уходит в Anthropic целиком. В сводке календарей Claude получает названия событий, время, имена и пересечения. Места и заметки к событиям попадают в запрос, только если в Config стоит `sendLocationsToCloud: true`, а с `llmProvider: "ollama"` локальная модель получает всё. Юнит-тест `buildDigestRequest: privacy` и mock-прогон ноды `Build Digest Request` проверяют, что места из примера в облачный запрос не попадают. Готовая сводка всё равно уходит в Gmail и Telegram.
 
-| Meeting notes → Notion | Family calendar digest |
-|---|---|
-| ![](docs/screenshots/meeting-notes-to-notion.png) | ![](docs/screenshots/family-calendar-digest.png) |
-| **Private document Q&A** | **Error handler** |
-| ![](docs/screenshots/private-doc-qa-local-llm.png) | ![](docs/screenshots/error-handler.png) |
+Q&A по документам помечен тегом `local-only`. Для таких воркфлоу [`scripts/validate.mjs`](scripts/validate.mjs) отклоняет ноды облачных сервисов (16 шаблонов в `CLOUD_NODE_TYPES`), подставляет в URL каждой HTTP-ноды значения из Config и пропускает только локальные хосты вроде `ollama`, `qdrant` и `host.docker.internal`. URL, поменянный в редакторе после импорта, эта проверка не увидит. При сбое имя ноды и текст ошибки всё же уходят в Telegram через error-handler, ключи и токены в тексте маскирует [`redact.js`](src/shared/redact.js).
 
-## Setup
+## Перевод часов, выдуманные сноски и повторные алерты
 
-### 1. Start the stack
+- [`day-window.js`](src/calendar/day-window.js) ищет UTC-момент локальной полуночи в два прохода, потому что в дни перевода часов смещение меняется. Тест проверяет, что 1 ноября 2026 года в `America/New_York` длится 25 часов.
+- [`rag.js`](src/docqa/rag.js) вырезает из ответа ссылки `[n]` на несуществующие источники, которые маленькие локальные модели иногда придумывают. Если ни один фрагмент не набрал `minScore` 0.35, LLM не вызывается и вебхук сразу отвечает с `grounded: false`.
+- Error-handler шлёт один и тот же алерт не чаще раза в 30 минут. Отпечаток в [`error-record.js`](src/errors/error-record.js) строится из id воркфлоу, имени ноды и сообщения с числами, заменёнными на `#`. Ошибки severity `high` (401, 403, credentials) приходят всегда.
 
-Requirements: Docker Desktop (or Docker Engine + Compose v2.20+), and about 10 GB of free disk for the local models.
+## Запуск
+
+Без Docker и аккаунтов всё проверяется на Node.js ≥ 22, зависимостей в `package.json` нет. Mock-прогоны берут из `samples/` транскрипты и календари семьи Alder с почтой на зарезервированном домене `home.example`.
 
 ```bash
-git clone https://github.com/sinnercode228/n8n-home-ai-workflows.git home-automation
-cd home-automation
-cp .env.example .env
-# Generate the encryption key, paste it into .env, and save a copy in your password manager:
-openssl rand -hex 32
+npm run check    # check:build, validate и 48 тестов, те же шаги, что в CI
+```
+
+Полный стек:
+
+```bash
+cp .env.example .env                    # вписать N8N_ENCRYPTION_KEY: openssl rand -hex 32
 mkdir -p documents logs backups
-docker compose up -d            # n8n + Ollama + Qdrant (COMPOSE_PROFILES in .env)
-docker compose logs -f ollama-models   # first run: downloads nomic-embed-text + llama3.1:8b
-```
-
-Open http://localhost:5678 and create the n8n owner account.
-
-> **Apple Silicon:** Docker can't use the Mac's GPU. For faster local answers, install the native [Ollama](https://ollama.com) app, remove `ollama` from `COMPOSE_PROFILES`, and set `ollamaBaseUrl` to `http://host.docker.internal:11434` in the Config nodes.
-
-### 2. Import the workflows
-
-Use the CLI. It keeps the workflow IDs, so every workflow stays connected to the error handler:
-
-```bash
+docker compose up -d                    # профили из COMPOSE_PROFILES, в примере ollama,qdrant
 docker compose cp workflows n8n:/tmp/workflows
 docker compose exec n8n n8n import:workflow --separate --input=/tmp/workflows
 docker compose restart n8n
+docker compose logs -f ollama-models    # первый запуск: скачиваются модели
 ```
 
-(UI alternative: *Workflows → Import from File* for each JSON. Then open each workflow's **Settings → Error workflow** and select "Global error handler".)
+Редактор открывается на http://localhost:5678, порт опубликован только на `127.0.0.1`. Файловым нодам доступны `/data/docs` (на чтение) и `/logs`. Профиль `proxy` ставит перед редактором Caddy с basic auth на всё, кроме вебхуков и `/healthz`. После импорта стоит проверить, что у трёх воркфлоу error workflow указывает на Global error handler.
 
-### 3. Create credentials
-
-The workflows reference credentials **by name only**. Create them in n8n (**Credentials → Add**) with these names, or re-select them on each node after import:
-
-| Credential name | n8n type | Used by |
-|---|---|---|
-| `Anthropic API key (x-api-key header)` | Header Auth: name `x-api-key`, value = your key | Meeting notes, Calendar digest |
-| `Webhook shared secret (meeting recorder)` | Header Auth: e.g. `X-Webhook-Secret` + a random value | Meeting notes webhook |
-| `Webhook shared secret (doc Q&A)` | Header Auth | Doc Q&A webhook |
-| `Notion (household workspace)` | Notion API | Meeting notes |
-| `Google Calendar (household)` | Google Calendar OAuth2 | Meeting notes, Calendar digest |
-| `Gmail (household)` | Gmail OAuth2 | Calendar digest |
-| `Telegram bot (household alerts)` | Telegram API | All (alerts, digest) |
-| `SMTP (household alerts)` | SMTP (optional; email nodes are disabled by default) | Meeting notes, Error handler |
-
-### 4. Fill in each workflow's Config node
-
-Every workflow starts with a **Config** node (a Set node in JSON mode) that holds all settings: model, IDs, timezone, chat ID, and so on. Replace every `REPLACE_WITH_...` value. `npm run validate` lists how many are left.
-
-**Notion databases** (share both with your integration):
-
-- **Meetings**: `Name` (title), `Date` (date), `Source` (select), `Attendees` (text), `Recording` (URL)
-- **Tasks**: `Name` (title), `Owner` (text), `Due` (date), `Priority` (select: high/normal/low), `Status` (select: To do), `Meeting` (relation → Meetings)
-
-If your column names differ, re-pick the properties on the two Notion nodes.
-
-### 5. Try it
+Быстрее всего проверить Q&A по документам: ему нужен один credential `Webhook shared secret (doc Q&A)` (Header Auth, в примере заголовок `X-Webhook-Secret`) и никаких внешних аккаунтов.
 
 ```bash
-# Meeting notes: send the sample Fathom-style payload
-curl -X POST http://localhost:5678/webhook/meeting-notes \
-  -H "X-Webhook-Secret: <your secret>" -H "Content-Type: application/json" \
-  --data @samples/fathom-webhook.json
-
-# Private Q&A: index samples/docs (copy them into documents/ first), then ask
 cp -r samples/docs/* documents/
-#   -> run "Manual: Re-index Documents" in the n8n editor, then:
+# в редакторе: запустить «Manual: Re-index Documents» и активировать воркфлоу
 curl -X POST http://localhost:5678/webhook/doc-qa \
-  -H "X-Webhook-Secret: <your secret>" -H "Content-Type: application/json" \
+  -H "X-Webhook-Secret: <секрет>" -H "Content-Type: application/json" \
   -d '{"question": "When is the boiler service due?"}'
 ```
 
-Example Q&A response:
+Остальным трём нужны credentials с именами из нод (Anthropic как Header Auth с `x-api-key`, Notion, Google, Telegram, секрет вебхука встреч), свои значения вместо 9 заглушек `REPLACE_WITH_*` в Config-нодах и базы Notion Meetings (`Date`, `Source`, `Attendees`, `Recording`) и Tasks (`Owner`, `Due`, `Priority`, `Status`, `Meeting`). В репозитории все четыре воркфлоу выключены.
 
-```json
-{
-  "ok": true,
-  "question": "When is the boiler service due?",
-  "answer": "The boiler needs its annual service every September or October [1]...",
-  "grounded": true,
-  "citations": [{ "n": 1, "path": "home/boiler.md", "heading": "Annual service", "score": 0.82, "excerpt": "..." }],
-  "warnings": []
-}
-```
+На Apple Silicon Docker не использует GPU, поэтому [`docker-compose.yml`](docker-compose.yml) советует нативную Ollama на `http://host.docker.internal:11434`. Бэкапы и ротация ключей описаны в [`docs/runbook.md`](docs/runbook.md).
 
-Then **activate/publish** the workflows. Backups: schedule `scripts/backup.sh` (see [runbook](docs/runbook.md#4-backups)).
+## Тесты
 
-## Development
+| Файл | Тестов | Что проверяют |
+|---|---|---|
+| [`tests/unit.test.mjs`](tests/unit.test.mjs) | 33 | модули из `src/`: бэкофф, разбор ответов LLM, починка JSON, валидация заметок, окно дня, чанки, цитаты, отпечатки ошибок |
+| [`tests/workflows.test.mjs`](tests/workflows.test.mjs) | 8 | mock-прогоны настоящего `jsCode` всех четырёх воркфлоу, в том числе 429 → повтор и 401 → алерт без повтора |
+| [`tests/validator.test.mjs`](tests/validator.test.mjs) | 7 | все воркфлоу проходят, испорченные копии ловятся: битая связь, ключ в заголовке, credential в JSON, вебхук без авторизации, облачный хост в `local-only`, дрейф Code-ноды, error-выход без `continueErrorOutput` |
 
-```bash
-npm run build        # inline src/ modules into the Code nodes of workflows/*.json
-npm run validate     # static checks on every workflow (below)
-npm test             # unit tests + mock runs of the real Code-node code
-npm run check        # all of the above; this is what CI runs
-```
+Все 48 тестов написаны на `node:test`. CI повторяет шаги `npm run check` на Node 22 и 24, а на 24 ещё `docker compose config -q` со всеми профилями и `bash -n scripts/backup.sh`.
 
-`scripts/validate.mjs` checks each workflow for:
-
-- valid JSON, required fields and `settings.executionOrder: v1`, and the workflow ships inactive
-- unique node IDs and names; every connection targets an existing node on a valid output (IF/Switch output counts, error outputs only when `onError: continueErrorOutput`)
-- no orphan nodes, and every `$('Node name')` reference resolves
-- `settings.errorWorkflow` points at a workflow in this repo that has an Error Trigger
-- webhooks have authentication and a `webhookId`, and HTTP nodes have timeouts
-- Anthropic calls send `anthropic-version` and use a credential
-- credentials are `{ "name": ... }` only, with no secret-looking strings anywhere (Anthropic, OpenAI, Notion, Telegram, Google, AWS, GitHub, Slack, JWT, private keys) and no literal `Authorization`/`x-api-key` values
-- Code nodes compile and match `src/` exactly
-- `local-only` workflows never call a non-local host
-
-Edited a Code node in the n8n UI? Copy the change into `src/`, run `npm run build`, and commit both.
-
-### Repository layout
-
-```
-workflows/            importable n8n workflow JSON (source of truth for the graph)
-src/                  Code-node logic as plain, unit-tested JS modules
-  shared/             JSON repair, LLM response parsing, backoff, redaction, alerts
-  meeting/ calendar/ docqa/ errors/
-scripts/
-  build-workflows.mjs inline src/ into Code nodes (--check for CI)
-  validate.mjs        workflow validator
-  lib/code-nodes.mjs  Code node -> src module mapping
-  backup.sh           nightly backup (workflows, encrypted credentials, volume)
-tests/                node:test unit tests, vm mock runs, validator tests
-samples/              webhook payloads, API responses, demo documents (fictional)
-docs/                 architecture.md, runbook.md, screenshots/
-deploy/Caddyfile      optional HTTPS + basic auth proxy
-docker-compose.yml    n8n + Ollama + Qdrant (+ Caddy), healthchecks, volumes
-```
-
-## What was verified
-
-- `npm run check`: the build is in sync, the validator passes with 0 errors, and all tests pass (unit, mock workflow runs, validator negative tests).
-- All four workflows import into **n8n 2.40.6** with `n8n import:workflow --separate`. Their IDs, tags, `errorWorkflow` links and name-only credential references survive an export round-trip, and the Code-node code comes back byte-identical.
-- The screenshots are the real n8n 2.40.6 editor canvas, captured from a throwaway local instance. The red triangles mean the credentials haven't been created yet, which is expected right after import.
-- Node parameter names (Notion, Google Calendar, Gmail draft, Convert to File, Read/Write Files, Set, Webhook) were checked against the installed n8n node sources.
-- `docker compose config` is valid with all profiles.
-- **Not verified here:** live calls to Anthropic, Notion, Google or Telegram (no real accounts were used), and vendor webhook field names. The Fathom and Granola payloads in `samples/` are illustrative. Adjust `src/meeting/normalize-transcript.js` to match what your recorder actually sends.
-
-## Need something like this?
-
-I build n8n / AI automations and full-stack apps: integrations, LLM pipelines with proper error handling, and self-hosted setups.
-GitHub **[@sinnercode228](https://github.com/sinnercode228)** · Telegram **[@sinnercode](https://t.me/sinnercode)**
-
----
-
-## Кратко на русском
-
-Демо-репозиторий из четырёх n8n-воркфлоу для домашнего сервера (Mac mini) на Docker Compose. Семья и данные вымышленные, реальных ключей нет.
-
-- **Заметки встреч → Notion.** Вебхук с транскриптом (Fathom/Granola) отправляется в Claude, который возвращает строгий JSON: резюме, решения, задачи с ответственными и сроками. Дальше идут валидация и починка JSON, страница и задачи в Notion и события в Google Calendar. На ошибках — ретраи с экспоненциальной задержкой и алерт в Telegram.
-- **Утренний дайджест календарей.** Несколько календарей объединяются, дубли убираются, пересечения отмечаются. Текст пишет Claude или локальная Ollama. Результат — черновик в Gmail (не отправляется) и сообщение в Telegram. Если LLM недоступна, уходит простой дайджест без ИИ.
-- **Вопросы по личным документам.** Полностью локально (Ollama + Qdrant), ответы со ссылками на источники. Валидатор в CI гарантирует, что воркфлоу не обращается к облаку.
-- **Глобальный обработчик ошибок.** Структурированный лог JSONL со скрытием секретов, понятный алерт с подсказкой, что делать, и защита от спама.
-
-JS-код Code-нод лежит в `src/` и покрыт тестами. `npm run build` встраивает его в JSON, а `npm run check` запускает сборку, валидатор и тесты (то же самое делает CI). Для владельца есть понятный [runbook](docs/runbook.md): перезапуск, бэкапы, ротация ключей, что делать при сбое.
-
-Связаться: GitHub [@sinnercode228](https://github.com/sinnercode228), Telegram [@sinnercode](https://t.me/sinnercode).
-
-## License
-
-MIT. See [LICENSE](LICENSE).
+Лицензия: [MIT](LICENSE).
