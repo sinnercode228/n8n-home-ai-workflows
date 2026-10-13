@@ -263,6 +263,17 @@ test('chunkDocument: paragraph packing, headings, overlap, stable ids', () => {
   assert.deepEqual(chunkDocument({ path: 'e.md', text: '  ' }), []);
 });
 
+test('chunkDocument splits a long run with no whitespace without losing content', () => {
+  // A minified blob (no spaces) longer than maxChars used to collapse to a
+  // single trailing chunk, silently dropping everything before it.
+  const blob = 'x'.repeat(2500);
+  const chunks = chunkDocument({ path: 'blob.md', text: blob }, { maxChars: 1200, overlapChars: 200 });
+  assert.ok(chunks.length >= 3);
+  assert.ok(chunks.every((c) => c.text.length <= 1200));
+  const recovered = chunks.map((c) => c.text).join('').replace(/\s/g, '');
+  assert.equal(recovered, blob);
+});
+
 test('chunkDocument on the demo boiler document keeps section headings', () => {
   const text = readFileSync(new URL('../samples/docs/home/boiler.md', import.meta.url), 'utf8');
   const chunks = chunkDocument({ path: 'home/boiler.md', text }, { maxChars: 300, overlapChars: 60 });
