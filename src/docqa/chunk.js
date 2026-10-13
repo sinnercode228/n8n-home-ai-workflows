@@ -34,8 +34,15 @@ export function chunkDocument({ path, text }, { maxChars = 1200, overlapChars = 
 
   for (const para of paragraphs) {
     if (/^#{1,6}\s+/.test(para)) heading = para.split('\n')[0].replace(/^#{1,6}\s+/, '').trim();
-    // Very long paragraphs (tables, pasted logs) are split on whitespace.
-    const pieces = para.length > maxChars ? para.match(new RegExp(`[\\s\\S]{1,${maxChars - overlapChars}}(?=\\s|$)`, 'g')) || [para] : [para];
+    // Very long paragraphs (tables, pasted logs) are split on whitespace when
+    // possible, with a hard cut as a fallback so a long run without any
+    // whitespace (minified JSON, a base64 blob) is still covered in full
+    // rather than losing everything before the first break we can reach.
+    const size = maxChars - overlapChars;
+    const pieces =
+      para.length > maxChars
+        ? para.match(new RegExp(`[\\s\\S]{1,${size}}(?=\\s|$)|[\\s\\S]{1,${size}}`, 'g')) || [para]
+        : [para];
     for (const piece of pieces) {
       if (hasNew && current.length + piece.length + 2 > maxChars) flush();
       if (!hasNew) currentHeading = heading;
