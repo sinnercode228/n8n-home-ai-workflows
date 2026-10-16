@@ -175,6 +175,18 @@ test('validateMeetingNotes: repairs owners, dates, priorities and duplicates wit
   assert.equal(r.warnings.length, 5);
 });
 
+test('validateMeetingNotes: an owner sharing a first name with several attendees is not guessed', () => {
+  const owners = (owner) =>
+    validateMeetingNotes(
+      { summary: 'ok', actionItems: [{ task: 'Call the plumber', owner }] },
+      { attendees: ['Sam Alder', 'Sam Brooks', 'Jordan Alder'] },
+    ).notes.actionItems[0].owner;
+  assert.equal(owners('Sam B.'), 'Sam B.');
+  assert.equal(owners('sam'), 'sam');
+  assert.equal(owners('Sam Brooks'), 'Sam Brooks');
+  assert.equal(owners('jordan'), 'Jordan Alder');
+});
+
 test('validateMeetingNotes: hard errors block writing', () => {
   assert.equal(validateMeetingNotes([]).ok, false);
   assert.deepEqual(validateMeetingNotes({ actionItems: {} }).errors, ['summary is missing', 'actionItems must be a list']);
