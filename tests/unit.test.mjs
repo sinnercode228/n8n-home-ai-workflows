@@ -175,6 +175,26 @@ test('validateMeetingNotes: repairs owners, dates, priorities and duplicates wit
   assert.equal(r.warnings.length, 5);
 });
 
+test('validateMeetingNotes: ambiguous first name keeps the model owner instead of guessing', () => {
+  const r = validateMeetingNotes(
+    {
+      summary: 'ok',
+      actionItems: [
+        { task: 'Call the plumber', owner: 'Sam B.' },
+        { task: 'Send the invoice', owner: 'Sam' },
+        { task: 'Book flights', owner: 'Jordan' },
+      ],
+    },
+    { attendees: ['Sam Alder', 'Sam Brooks', 'Jordan Alder'] },
+  );
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.notes.actionItems.map((a) => a.owner), [
+    'Sam B.',
+    'Sam',
+    'Jordan Alder',
+  ]);
+});
+
 test('validateMeetingNotes: hard errors block writing', () => {
   assert.equal(validateMeetingNotes([]).ok, false);
   assert.deepEqual(validateMeetingNotes({ actionItems: {} }).errors, ['summary is missing', 'actionItems must be a list']);
