@@ -21,8 +21,9 @@ function matchOwner(owner, attendees) {
   if (!name || /^(unassigned|none|n\/a|unknown|tbd)$/i.test(name)) return 'Unassigned';
   const exact = attendees.find((a) => a.toLowerCase() === name.toLowerCase());
   if (exact) return exact;
-  const first = attendees.find((a) => a.split(' ')[0].toLowerCase() === name.split(' ')[0].toLowerCase());
-  return first || name;
+  const firstWord = name.split(' ')[0].toLowerCase();
+  const firstMatches = attendees.filter((a) => a.split(' ')[0].toLowerCase() === firstWord);
+  return firstMatches.length === 1 ? firstMatches[0] : name;
 }
 
 /**
