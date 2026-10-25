@@ -309,6 +309,17 @@ test('buildQdrantPoints: batches points and prepares stale-chunk deletion per fi
   assert.throws(() => buildQdrantPoints(chunks, []), /embeddings/);
 });
 
+test('buildQdrantPoints: orphanDeleteRequest removes chunks of files no longer in the run', () => {
+  // Current run only re-ingests a.md; b.md was deleted from docsRoot and must
+  // not keep answering questions out of stale chunks.
+  const chunks = [
+    { id: 'a0', path: 'a.md', chunkIndex: 0, heading: null, text: 't' },
+    { id: 'a1', path: 'a.md', chunkIndex: 1, heading: null, text: 't' },
+  ];
+  const out = buildQdrantPoints(chunks, chunks.map(() => [0.1, 0.2]));
+  assert.deepEqual(out.orphanDeleteRequest.filter.must_not[0].match.any, ['a.md']);
+});
+
 test('normalizeQuestion validates input', () => {
   assert.deepEqual(normalizeQuestion({ body: { question: '  When is the boiler service? ' } }), { ok: true, question: 'When is the boiler service?', topK: null });
   assert.equal(normalizeQuestion({ body: {} }).status, 400);

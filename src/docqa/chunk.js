@@ -71,10 +71,17 @@ export function buildQdrantPoints(chunks, embeddings, { batchSize = 64 } = {}) {
   const batches = [];
   for (let i = 0; i < points.length; i += batchSize) batches.push({ points: points.slice(i, i + batchSize) });
   const paths = [...new Set(chunks.map((c) => c.path))];
+  const pathFilter = { key: 'path', match: { any: paths } };
   return {
     paths,
     pointCount: points.length,
-    deleteRequest: { filter: { must: [{ key: 'path', match: { any: paths } }] } },
+    // Chunks of files in the current run: delete first so re-chunking after
+    // an edit does not leave the previous content behind (chunk ids are
+    // content-addressed, so upsert alone would not replace them).
+    deleteRequest: { filter: { must: [pathFilter] } },
+    // Chunks of files that are no longer in docsGlob: delete so a document
+    // removed from docsRoot stops answering questions out of stale chunks.
+    orphanDeleteRequest: { filter: { must_not: [pathFilter] } },
     batches,
   };
 }
