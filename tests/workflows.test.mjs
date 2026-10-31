@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { configOf, items, runCodeNode, sample } from './harness.mjs';
+import { configOf, items, loadWorkflow, runCodeNode, sample } from './harness.mjs';
 
 const MEETING = 'meeting-notes-to-notion.json';
 const DIGEST = 'family-calendar-digest.json';
@@ -41,6 +41,34 @@ test('meeting workflow: webhook -> Claude request -> parsed notes -> Notion task
   assert.equal(tasks.length, 3);
   assert.deepEqual(tasks.map((t) => t.json.owner), ['Jordan Alder', 'Sam Alder', 'Unassigned']);
   assert.equal(tasks[0].json.meetingPageId, 'notion-page-123');
+});
+
+// What an HTTP Request node in "Using JSON" headers mode would send for an item.
+function httpHeaders(file, nodeName, json) {
+  const node = loadWorkflow(file).nodes.find((n) => n.name === nodeName);
+  assert.ok(!node.parameters.headerParameters, `${nodeName}: headers must come from the item, not a static list`);
+  const expr = node.parameters.jsonHeaders.match(/^=\{\{([\s\S]*)\}\}$/)[1];
+  return JSON.parse(new Function('$json', `return (${expr});`)(json));
+}
+
+test('Claude HTTP nodes send the fallback beta header only while fallbacks are on', async () => {
+  const { config, built } = await meetingUpToClaude('fathom-webhook.json');
+  assert.deepEqual(httpHeaders(MEETING, 'Claude: Extract Notes', built[0].json), {
+    'anthropic-version': '2023-06-01',
+    'anthropic-beta': 'server-side-fallback-2026-07-01',
+  });
+  const normalized = await runCodeNode(MEETING, 'Normalize Transcript', { input: items({ body: sample('fathom-webhook.json') }) });
+  const off = await runCodeNode(MEETING, 'Build Claude Request', { input: normalized, nodes: { Config: items({ ...config, useServerFallbacks: false }) } });
+  assert.deepEqual(httpHeaders(MEETING, 'Claude: Extract Notes', off[0].json), { 'anthropic-version': '2023-06-01' });
+
+  const day = { date: '2026-09-25', dateLabel: 'Friday, September 25', eventCount: 1, events: [{ timeLabel: '9:00 AM', title: 'Dentist', members: ['Sam'] }], conflicts: [] };
+  const digestConfig = configOf(DIGEST);
+  for (const [useServerFallbacks, beta] of [[true, true], [false, false]]) {
+    const request = await runCodeNode(DIGEST, 'Build Digest Request', { input: items(day), nodes: { Config: items({ ...digestConfig, llmProvider: 'claude', useServerFallbacks }) } });
+    const headers = httpHeaders(DIGEST, 'Claude: Write Digest', request[0].json);
+    assert.equal('anthropic-beta' in headers, beta);
+    assert.equal(headers['anthropic-version'], '2023-06-01');
+  }
 });
 
 test('meeting workflow: messy model output is repaired and flagged, not silently trusted', async () => {

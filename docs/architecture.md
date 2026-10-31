@@ -92,7 +92,7 @@ flowchart LR
 
 - **Structured outputs.** The request sets `output_config.format` to a JSON schema, so Claude's answer must match that shape. The parse step still validates it and can repair it, because the same code is used when the model is swapped for a local one.
 - **Adaptive thinking.** Adaptive thinking is on by default for the configured model, and responses can start with `thinking` blocks. The parser reads only the `text` blocks. It checks `stop_reason` (`refusal`, `max_tokens`) before it trusts the content.
-- **Server-side fallbacks.** When `useServerFallbacks` is true (the default), the request sends `fallbacks: "default"` with the `server-side-fallback-2026-07-01` beta header. If the model declines the request, the API retries it on Anthropic's recommended fallback model instead of failing the run. When that happens, the Notion page gets a warning line.
+- **Server-side fallbacks.** When `useServerFallbacks` is true (the default), the request sends `fallbacks: "default"` with the `server-side-fallback-2026-07-01` beta header; set it to false and both are left out. If the model declines the request, the API retries it on Anthropic's recommended fallback model instead of failing the run. When that happens, the Notion page gets a warning line.
 - **Validation.** Owners are matched to attendee names. Impossible or past due dates are removed. Duplicate tasks are dropped. Every fix is listed on the page under **Processing notes**, so nothing is changed silently.
 - **Retries.** n8n's built-in retry waits a fixed time. Rate limits and overload errors need real backoff, so the error output goes to a Wait node loop. The attempt count comes from `$runIndex`.
 
