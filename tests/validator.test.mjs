@@ -22,6 +22,19 @@ test('all shipped workflows pass', () => {
   for (const f of files) assert.deepEqual(validateWorkflow(f, raws[f], all).errors, [], f);
 });
 
+test('catches an Anthropic call without anthropic-version, in either headers mode', () => {
+  const literal = check('meeting-notes-to-notion.json', (wf) => {
+    wf.nodes.find((n) => n.name === 'Claude: Extract Notes').parameters.jsonHeaders = '{"anthropic-beta": "x"}';
+  });
+  assert.ok(literal.some((e) => /without anthropic-version header/.test(e)));
+  const keypair = check('meeting-notes-to-notion.json', (wf) => {
+    const p = wf.nodes.find((n) => n.name === 'Claude: Extract Notes').parameters;
+    p.specifyHeaders = 'keypair';
+    p.headerParameters = { parameters: [{ name: 'anthropic-beta', value: 'x' }] };
+  });
+  assert.ok(keypair.some((e) => /without anthropic-version header/.test(e)));
+});
+
 test('catches a connection to a missing node', () => {
   const errs = check('meeting-notes-to-notion.json', (wf) => {
     wf.connections.Config.main[0].push({ node: 'Ghost', type: 'main', index: 0 });
@@ -32,7 +45,8 @@ test('catches a connection to a missing node', () => {
 test('catches a hard-coded API key header', () => {
   const errs = check('meeting-notes-to-notion.json', (wf) => {
     const http = wf.nodes.find((n) => n.name === 'Claude: Extract Notes');
-    http.parameters.headerParameters.parameters.push({ name: 'x-api-key', value: `sk-ant-api03-${'x'.repeat(40)}` });
+    http.parameters.specifyHeaders = 'keypair';
+    http.parameters.headerParameters = { parameters: [{ name: 'anthropic-version', value: '2023-06-01' }, { name: 'x-api-key', value: `sk-ant-api03-${'x'.repeat(40)}` }] };
   });
   assert.ok(errs.some((e) => /literal value/.test(e)));
   assert.ok(errs.some((e) => /hard-coded secret \(Anthropic API key\)/.test(e)));

@@ -1,5 +1,6 @@
 import { clip, escapeHtml } from '../shared/text.js';
 import { readLlmText } from '../shared/llm-response.js';
+import { anthropicHeaders } from '../shared/anthropic-headers.js';
 
 // Digest writing: request builder for Claude or local Ollama, a deterministic
 // fallback digest (used when the LLM is down or there is nothing on the
@@ -56,8 +57,9 @@ export function buildDigestRequest(day, config = {}) {
     output_config: { effort: 'low' },
     messages: [{ role: 'user', content: prompt }],
   };
-  if (config.useServerFallbacks !== false) request.fallbacks = 'default';
-  return { route: 'claude', request };
+  const fallbacks = config.useServerFallbacks !== false;
+  if (fallbacks) request.fallbacks = 'default';
+  return { route: 'claude', request, headers: anthropicHeaders({ fallbacks }) };
 }
 
 /** Deterministic digest - no AI involved. */

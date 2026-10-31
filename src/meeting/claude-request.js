@@ -1,4 +1,5 @@
 import { isoDateInZone } from '../shared/text.js';
+import { anthropicHeaders } from '../shared/anthropic-headers.js';
 
 // Build the Anthropic Messages API request for meeting notes.
 // - Structured outputs (output_config.format) make Claude return JSON that
@@ -75,7 +76,8 @@ export function buildMeetingRequest(meeting, config = {}) {
       format: { type: 'json_schema', schema: MEETING_NOTES_SCHEMA },
     },
   };
-  if (config.useServerFallbacks !== false) request.fallbacks = 'default';
+  const fallbacks = config.useServerFallbacks !== false;
+  if (fallbacks) request.fallbacks = 'default';
 
-  return { meetingDate, claudeRequest: request };
+  return { meetingDate, claudeRequest: request, claudeHeaders: anthropicHeaders({ fallbacks }) };
 }

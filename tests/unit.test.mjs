@@ -136,8 +136,10 @@ test('buildMeetingRequest: structured output schema, model from config, fallback
   assert.deepEqual(claudeRequest.output_config.format, { type: 'json_schema', schema: MEETING_NOTES_SCHEMA });
   assert.match(claudeRequest.messages[0].content, /Meeting date: 2026-09-21 \(Monday\)/);
   assert.ok(!('thinking' in claudeRequest) && !('temperature' in claudeRequest));
-  const noFb = buildMeetingRequest(m, { useServerFallbacks: false }).claudeRequest;
-  assert.ok(!('fallbacks' in noFb));
+  const noFb = buildMeetingRequest(m, { useServerFallbacks: false });
+  assert.ok(!('fallbacks' in noFb.claudeRequest));
+  assert.deepEqual(noFb.claudeHeaders, { 'anthropic-version': '2023-06-01' });
+  assert.equal(buildMeetingRequest(m, {}).claudeHeaders['anthropic-beta'], 'server-side-fallback-2026-07-01');
 });
 
 test('MEETING_NOTES_SCHEMA: every object is closed and fully required (structured outputs rules)', () => {

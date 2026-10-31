@@ -236,8 +236,12 @@ export function validateWorkflow(file, raw, allWorkflows) {
       if (!p.options?.timeout) err(`"${n.name}": HTTP Request without options.timeout`);
       const url = resolveUrl(p.url, config) || p.url || '';
       if (/api\.anthropic\.com/.test(url)) {
-        const headers = (p.headerParameters?.parameters || []).map((h) => h.name.toLowerCase());
-        if (!headers.includes('anthropic-version')) err(`"${n.name}": Anthropic call without anthropic-version header`);
+        // JSON headers mode: an expression takes them from the item (built by
+        // src/shared/anthropic-headers.js); a literal must name the version.
+        const hasVersion = p.specifyHeaders === 'json'
+          ? String(p.jsonHeaders || '').startsWith('=') || /"anthropic-version"/i.test(p.jsonHeaders || '')
+          : (p.headerParameters?.parameters || []).some((h) => h.name.toLowerCase() === 'anthropic-version');
+        if (!hasVersion) err(`"${n.name}": Anthropic call without anthropic-version header`);
         if (!n.credentials?.httpHeaderAuth) err(`"${n.name}": Anthropic call must authenticate via an httpHeaderAuth credential`);
       }
       if (/^http:\/\//.test(url) && hostOf(url) && !LOCAL_HOSTS.has(hostOf(url)) && !/\.(local|lan|internal|home\.arpa)$/.test(hostOf(url))) {
